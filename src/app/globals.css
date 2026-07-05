@@ -1,6 +1,10 @@
 @import "tailwindcss";
 
- :root {
+/* Ties Tailwind's `dark:` variant to our data-theme attribute toggle
+   (instead of only responding to OS-level prefers-color-scheme). */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+:root {
   --background: #ffffff;
   --foreground: #171717;
   --surface: #ffffff;
@@ -22,10 +26,10 @@
   :root {
     --background: #0a0a0a;
     --foreground: #ededed;
-    --surface: #0f0f10;
-    --muted: #1a1a1b;
-    --muted-foreground: #a3a3a3;
-    --border: #2a2a2a;
+    --surface: #18181b;
+    --muted: #27272a;
+    --muted-foreground: #a1a1aa;
+    --border: #3f3f46;
     --button-bg: #e5e7eb;
     --button-fg: #111827;
   }
@@ -45,18 +49,12 @@ html[data-theme="light"] {
 html[data-theme="dark"] {
   --background: #0a0a0a;
   --foreground: #ededed;
-  --surface: #0f0f10;
-  --muted: #1a1a1b;
-  --muted-foreground: #a3a3a3;
-  --border: #2a2a2a;
+  --surface: #18181b;
+  --muted: #27272a;
+  --muted-foreground: #a1a1aa;
+  --border: #3f3f46;
   --button-bg: #e5e7eb;
   --button-fg: #111827;
-}
-
-/* Force white text in dark mode across common elements */
-html[data-theme="dark"] body,
-html[data-theme="dark"] body :where(p, span, a, h1, h2, h3, h4, h5, h6, li, small, label, div, strong, em, code, pre, input, textarea, select, button) {
-  color: #ffffff !important;
 }
 
 body {
@@ -76,4 +74,67 @@ header { border-color: var(--border); }
 .card {
   background: var(--surface);
   border-color: var(--border);
+}
+
+/* -----------------------------------------------------------------
+   Dark-mode remaps for the plain (light-only) Tailwind utility classes
+   used throughout the app — e.g. hover:bg-gray-100, text-gray-500,
+   bg-red-50/text-red-700 status pills.
+
+   This is scoped and reversible (unlike the old approach of forcing
+   `color: white !important` on every element), and every page benefits
+   without having to hand-edit `dark:` variants into ~13 files one by one.
+   New components should still prefer real `dark:` utility classes going
+   forward — this layer exists to fix the existing ones in place.
+   ------------------------------------------------------------------ */
+html[data-theme="dark"] {
+  /* Borders */
+  & .border,
+  & [class*="border-gray-"],
+  & [class*="border-t"],
+  & [class*="border-b"] {
+    border-color: var(--border);
+  }
+
+  /* Neutral backgrounds -> surface/muted */
+  & .bg-white,
+  & .bg-gray-50 {
+    background-color: var(--surface);
+  }
+  & .bg-gray-100 {
+    background-color: var(--muted);
+  }
+  & .hover\:bg-gray-50:hover,
+  & .hover\:bg-gray-100:hover {
+    background-color: var(--muted);
+  }
+
+  /* Neutral text */
+  & .text-gray-400,
+  & .text-gray-500,
+  & .text-gray-600 {
+    color: var(--muted-foreground);
+  }
+  & .text-gray-700,
+  & .text-gray-800,
+  & .text-gray-900 {
+    color: var(--foreground);
+  }
+
+  /* Status pills — keep them legible instead of white-on-pastel */
+  & .bg-red-50   { background-color: #450a0a; }
+  & .text-red-700 { color: #fca5a5; }
+  & .hover\:bg-red-100:hover { background-color: #7f1d1d; }
+
+  & .bg-green-100 { background-color: #052e16; }
+  & .text-green-700,
+  & .text-green-600 { color: #86efac; }
+
+  & .bg-amber-100,
+  & .text-amber-600 { background-color: #451a03; color: #fcd34d; }
+
+  & .bg-gray-100.text-gray-600 {
+    background-color: var(--muted);
+    color: var(--muted-foreground);
+  }
 }
