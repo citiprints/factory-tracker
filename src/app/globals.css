@@ -1,0 +1,79 @@
+@import "tailwindcss";
+
+ :root {
+  --background: #ffffff;
+  --foreground: #171717;
+  --surface: #ffffff;
+  --muted: #f3f4f6;
+  --muted-foreground: #4b5563;
+  --border: #e5e7eb;
+  --button-bg: #111827;
+  --button-fg: #ffffff;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+    --surface: #0f0f10;
+    --muted: #1a1a1b;
+    --muted-foreground: #a3a3a3;
+    --border: #2a2a2a;
+    --button-bg: #e5e7eb;
+    --button-fg: #111827;
+  }
+}
+
+html[data-theme="light"] {
+  --background: #ffffff;
+  --foreground: #171717;
+  --surface: #ffffff;
+  --muted: #f3f4f6;
+  --muted-foreground: #4b5563;
+  --border: #e5e7eb;
+  --button-bg: #111827;
+  --button-fg: #ffffff;
+}
+
+html[data-theme="dark"] {
+  --background: #0a0a0a;
+  --foreground: #ededed;
+  --surface: #0f0f10;
+  --muted: #1a1a1b;
+  --muted-foreground: #a3a3a3;
+  --border: #2a2a2a;
+  --button-bg: #e5e7eb;
+  --button-fg: #111827;
+}
+
+/* Force white text in dark mode across common elements */
+html[data-theme="dark"] body,
+html[data-theme="dark"] body :where(p, span, a, h1, h2, h3, h4, h5, h6, li, small, label, div, strong, em, code, pre, input, textarea, select, button) {
+  color: #ffffff !important;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+  color-scheme: light dark;
+}
+
+header { border-color: var(--border); }
+
+.btn {
+  background: var(--button-bg);
+  color: var(--button-fg);
+}
+
+.card {
+  background: var(--surface);
+  border-color: var(--border);
+}

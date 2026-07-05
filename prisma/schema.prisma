@@ -1,0 +1,290 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider      = "prisma-client-js"
+  output        = "../src/generated/prisma"
+  binaryTargets = ["native", "rhel-openssl-3.0.x", "debian-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// NOTE: role is a free string, not a Prisma enum, so it stays flexible.
+// Convention used across the app: "ADMIN" | "MANAGER" | "WORKER"
+
+// Models
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  name      String
+  phone     String?
+  role      String   @default("WORKER")
+  active    Boolean  @default(true)
+
+  tasksCreated  Task[]        @relation("TasksCreated")
+  assignments   Assignment[]
+  comments      Comment[]
+  activities    ActivityLog[] @relation("ActorActivities")
+  subtasksAssigned Subtask[]
+  sessions      Session[]
+
+  attendanceLogs    AttendanceLog[]
+  shiftsScheduled   Shift[]          @relation("ShiftsAssignedBy")
+  shifts            Shift[]          @relation("ShiftsForUser")
+  pushSubscriptions PushSubscription[]
+  notifications     Notification[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// A physical site workers can clock in from (Wrapzone T Nagar, Mylapore, Citiprints factory, etc.)
+model Location {
+  id        String   @id @default(cuid())
+  name      String
+  latitude  Float
+  longitude Float
+  radiusM   Int      @default(150) // geofence radius in meters
+  address   String?
+  active    Boolean  @default(true)
+
+  attendanceLogs AttendanceLog[]
+  shifts         Shift[]
+
+  createdAt DateTime @default(now())
+}
+
+model AttendanceLog {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id])
+
+  locationId String?
+  location   Location? @relation(fields: [locationId], references: [id])
+
+  clockInAt  DateTime  @default(now())
+  clockOutAt DateTime?
+
+  clockInLat  Float?
+  clockInLng  Float?
+  clockOutLat Float?
+  clockOutLng Float?
+
+  withinGeofence Boolean @default(true)
+  method         String  @default("APP") // APP | MANUAL (admin correction)
+  note           String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, clockInAt])
+}
+
+// A planned work shift/window, assigned by an admin/manager to a worker.
+model Shift {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation("ShiftsForUser", fields: [userId], references: [id])
+
+  assignedById String
+  assignedBy   User   @relation("ShiftsAssignedBy", fields: [assignedById], references: [id])
+
+  locationId String?
+  location   Location? @relation(fields: [locationId], references: [id])
+
+  date      DateTime // day of the shift (date-only, time zeroed)
+  startTime String   // "09:00"
+  endTime   String   // "18:00"
+  taskId    String?  // optional: shift tied to a specific job
+  task      Task?    @relation(fields: [taskId], references: [id])
+  notes     String?
+  status    String   @default("SCHEDULED") // SCHEDULED | CONFIRMED | COMPLETED | MISSED | CANCELLED
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, date])
+  @@index([date])
+}
+
+model PushSubscription {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  fcmToken  String   @unique
+  device    String?  // "android" | "ios" | "web"
+  createdAt DateTime @default(now())
+}
+
+// In-app notification feed (also fans out to push via fcmToken above)
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  title     String
+  body      String
+  type      String   @default("GENERAL") // TASK_ASSIGNED | SHIFT_ASSIGNED | TASK_DUE | GENERAL
+  linkPath  String?  // e.g. "/tasks/abc123"
+  readAt    DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+}
+
+model Task {
+  id             String       @id @default(cuid())
+  title          String
+  description    String       @default("")
+  status         String       @default("TODO")
+  priority       String       @default("MEDIUM")
+  startAt        DateTime?
+  dueAt          DateTime?
+  estimatedHours Float?
+  actualHours    Float?
+  customer       String?      // legacy free-text
+  customerId     String?
+  customerRef    Customer?    @relation(fields: [customerId], references: [id])
+  jobNumber      String?
+  customFields   String?
+
+  createdById String
+  createdBy   User         @relation("TasksCreated", fields: [createdById], references: [id])
+
+  subtasks     Subtask[]
+  assignments  Assignment[]
+  comments     Comment[]
+  attachments  Attachment[]
+  activities   ActivityLog[] @relation("TaskActivities")
+  shifts       Shift[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, dueAt])
+  @@index([priority])
+  @@index([customerId])
+}
+
+model Customer {
+  id        String  @id @default(cuid())
+  name      String
+  email     String?
+  phone     String?
+  company   String?
+  address   String?
+
+  tasks     Task[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model CustomFieldDef {
+  id       String    @id @default(cuid())
+  key      String    @unique
+  label    String
+  type     String
+  required Boolean   @default(false)
+  order    Int       @default(0)
+
+  createdAt DateTime @default(now())
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  expiresAt DateTime
+
+  createdAt DateTime @default(now())
+}
+
+model Subtask {
+  id             String        @id @default(cuid())
+  taskId         String
+  task           Task          @relation(fields: [taskId], references: [id])
+  title          String
+  status         String        @default("TODO")
+  assigneeId     String?
+  assignee       User?         @relation(fields: [assigneeId], references: [id])
+  dueAt          DateTime?
+  estimatedHours Float?
+  actualHours    Float?
+  order          Int           @default(0)
+
+  comments    Comment[]
+  attachments Attachment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Assignment {
+  id      String @id @default(cuid())
+  taskId  String
+  userId  String
+  role    String @default("assignee")
+
+  task Task @relation(fields: [taskId], references: [id])
+  user User @relation(fields: [userId], references: [id])
+
+  createdAt DateTime @default(now())
+}
+
+model Comment {
+  id        String   @id @default(cuid())
+  body      String
+  authorId  String
+  author    User     @relation(fields: [authorId], references: [id])
+
+  // Polymorphic via nullable FKs
+  taskId    String?
+  task      Task?    @relation(fields: [taskId], references: [id])
+  subtaskId String?
+  subtask   Subtask? @relation(fields: [subtaskId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Attachment {
+  id        String   @id @default(cuid())
+  url       String
+  name      String
+  size      Int
+
+  // Polymorphic via nullable FKs
+  taskId    String?
+  task      Task?    @relation(fields: [taskId], references: [id])
+  subtaskId String?
+  subtask   Subtask? @relation(fields: [subtaskId], references: [id])
+
+  createdAt DateTime @default(now())
+}
+
+model ActivityLog {
+  id         String   @id @default(cuid())
+  entityType String   // e.g., "task" | "subtask"
+  entityId   String
+  action     String   // e.g., "STATUS_CHANGE", "ASSIGNED", "UPDATED"
+  before     String?
+  after      String?
+
+  actorId String
+  actor   User     @relation("ActorActivities", fields: [actorId], references: [id])
+
+  // Optional direct task linkage for quicker querying
+  taskId  String?
+  task    Task?    @relation("TaskActivities", fields: [taskId], references: [id])
+
+  at DateTime @default(now())
+}
+
+// End of schema
