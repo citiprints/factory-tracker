@@ -3,6 +3,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useState } from "react";
 import type { SafeUser } from "@/lib/session";
+import ThemeToggle from "./ThemeToggle";
 
 const ADMIN_LINKS = [
   { href: "/dashboard", label: "Dashboard" },
@@ -57,6 +58,7 @@ export default function Header({ user }: { user: SafeUser | null }) {
                   </Link>
                 ))}
                 <span className="text-gray-500 ml-2">{user.name}</span>
+                <ThemeToggle />
                 <button
                   onClick={handleLogout}
                   disabled={loggingOut}
@@ -88,6 +90,7 @@ export default function Header({ user }: { user: SafeUser | null }) {
         {user && menuOpen && (
           <nav className="md:hidden mt-3 flex flex-col gap-1 text-sm border-t pt-3">
             <div className="px-2 py-1 text-gray-500">Signed in as {user.name}</div>
+            <div className="px-2 py-1"><ThemeToggle /></div>
             {links.map((l) => (
               <Link
                 key={l.href}
