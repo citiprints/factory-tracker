@@ -2,11 +2,12 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/session";
 import { z } from "zod";
+import { SUBTASK_STATUSES } from "@/lib/constants";
 
 const CreateSubtaskSchema = z.object({
 	title: z.string().min(1),
-	status: z.enum(["TODO","IN_PROGRESS","DONE","CANCELLED"]).optional(),
-	assigneeId: z.string().uuid().nullable().optional(),
+	status: z.enum(SUBTASK_STATUSES).optional(),
+	assigneeId: z.string().nullable().optional(), // cuid, not uuid -- was rejecting every real ID
 	dueAt: z.string().datetime().nullable().optional(),
 	estimatedHours: z.number().nullable().optional(),
 	order: z.number().int().optional()

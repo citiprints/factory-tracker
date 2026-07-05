@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { getCurrentUser } from "@/lib/session";
+import { getCurrentUser, isAdmin } from "@/lib/session";
 import { z } from "zod";
 
 const UpdateFieldSchema = z.object({
@@ -13,6 +13,7 @@ const UpdateFieldSchema = z.object({
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
     const user = await getCurrentUser();
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!isAdmin(user)) return NextResponse.json({ error: "Only admins/managers can edit custom fields." }, { status: 403 });
     try {
         const json = await request.json();
         const data = UpdateFieldSchema.parse(json);
@@ -36,6 +37,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 export async function DELETE(_: Request, { params }: { params: Promise<{ id: string }> }) {
     const user = await getCurrentUser();
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!isAdmin(user)) return NextResponse.json({ error: "Only admins/managers can delete custom fields." }, { status: 403 });
     try {
         const { id } = await params;
         await prisma.customFieldDef.delete({ where: { id } });

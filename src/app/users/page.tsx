@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useCurrentUser } from "../UserContext";
 
 type User = {
 	id: string;
@@ -12,6 +13,8 @@ type User = {
 };
 
 export default function UsersPage() {
+	const currentUser = useCurrentUser();
+	const isAdmin = currentUser?.role === "ADMIN";
 	const [users, setUsers] = useState<User[]>([]);
 	const [editingId, setEditingId] = useState<string | null>(null);
 	const [editName, setEditName] = useState("");
@@ -20,25 +23,16 @@ export default function UsersPage() {
 	const [editActive, setEditActive] = useState(true);
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState<string | null>(null);
-	const [currentUser, setCurrentUser] = useState<any>(null);
 	const router = useRouter();
 
-	// Check if current user is admin
+	// The user is already known synchronously (resolved server-side in
+	// layout.tsx) -- no fetch, no flash of the page before redirecting
+	// a non-admin away.
 	useEffect(() => {
-		async function checkAuth() {
-			const res = await fetch("/api/auth/me");
-			if (res.ok) {
-				const user = await res.json();
-				setCurrentUser(user);
-				if (user.role !== "ADMIN") {
-					router.push("/dashboard");
-				}
-			} else {
-				router.push("/signin");
-			}
+		if (currentUser && !isAdmin) {
+			router.push("/dashboard");
 		}
-		checkAuth();
-	}, [router]);
+	}, [currentUser, isAdmin, router]);
 
 	async function load() {
 		const res = await fetch("/api/users");
@@ -49,10 +43,11 @@ export default function UsersPage() {
 	}
 
 	useEffect(() => {
-		if (currentUser?.role === "ADMIN") {
+		if (isAdmin) {
 			load();
 		}
-	}, [currentUser]);
+	}, [isAdmin]);
+
 
 	async function onUpdate(userId: string) {
 		setLoading(true);

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { getCurrentUser } from "@/lib/session";
+import { getCurrentUser, isAdmin } from "@/lib/session";
+import { TASK_STATUSES, TASK_PRIORITIES } from "@/lib/constants";
 import { z } from "zod";
 import { S3Client, DeleteObjectCommand } from "@aws-sdk/client-s3";
 
@@ -21,8 +22,8 @@ const s3Client = new S3Client({
 const UpdateTaskSchema = z.object({
 	title: z.string().min(1).optional(),
 	description: z.string().optional(),
-	status: z.enum(["TODO", "IN_PROGRESS", "DONE", "ARCHIVED", "CLIENT_TO_REVERT", "OTHERS"]).optional(),
-	priority: z.enum(["LOW", "MEDIUM", "HIGH", "URGENT"]).optional(),
+	status: z.enum(TASK_STATUSES).optional(),
+	priority: z.enum(TASK_PRIORITIES).optional(),
 	startAt: z.string().optional(),
 	dueAt: z.string().optional(),
 	customerId: z.string().optional(),
@@ -79,6 +80,35 @@ export async function PATCH(
 		const body = await request.json();
 		const validatedData = UpdateTaskSchema.parse(body);
 
+		const admin = isAdmin(user);
+
+		if (!admin) {
+			// Workers may only update the status of a task they're assigned to.
+			// Everything else (reassigning, editing dates/priority/customer,
+			// deleting) is an admin/manager-only action.
+			const existing = await prisma.task.findUnique({
+				where: { id },
+				include: { assignments: { select: { userId: true } } },
+			});
+			if (!existing) {
+				return NextResponse.json({ error: "Task not found" }, { status: 404 });
+			}
+			const isAssignee = existing.assignments.some((a) => a.userId === user.id);
+			if (!isAssignee) {
+				return NextResponse.json(
+					{ error: "You can only update tasks assigned to you." },
+					{ status: 403 }
+				);
+			}
+			const attemptedExtraFields = Object.keys(validatedData).filter((k) => k !== "status");
+			if (attemptedExtraFields.length > 0) {
+				return NextResponse.json(
+					{ error: "You can only change the status of this task." },
+					{ status: 403 }
+				);
+			}
+		}
+
 		// Handle paymentStatus via customFields
 		if (validatedData.customFields?.paymentStatus) {
 			validatedData.customFields = {
@@ -117,6 +147,12 @@ export async function DELETE(
 		const user = await getCurrentUser();
 		if (!user) {
 			return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+		}
+		if (!isAdmin(user)) {
+			return NextResponse.json(
+				{ error: "Only admins/managers can delete tasks." },
+				{ status: 403 }
+			);
 		}
 
 		// Get the task to find associated files

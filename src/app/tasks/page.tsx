@@ -1,8 +1,8 @@
 // FORCE REBUILD - Loading animations added
 "use client";
-import React, { useEffect, useState, useRef } from "react";
-import { getCurrentUser } from "@/lib/session";
-import { redirect } from "next/navigation";
+import React, { useEffect, useState, useRef, Suspense } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
+import { useCurrentUser } from "../UserContext";
 
 type Task = {
 	id: string;
@@ -88,8 +88,10 @@ function TasksSkeleton() {
 	);
 }
 
-export default function TasksPage() {
-	const [currentUser, setCurrentUser] = useState<{ id: string; name: string } | null>(null);
+function TasksPageInner() {
+	const currentUser = useCurrentUser();
+	const isAdmin = currentUser?.role === "ADMIN" || currentUser?.role === "MANAGER";
+	const searchParams = useSearchParams();
 	const [tasks, setTasks] = useState<Task[]>([]);
 	const [fields, setFields] = useState<Field[]>([]);
 	const [loading, setLoading] = useState(true);
@@ -148,28 +150,16 @@ export default function TasksPage() {
 	const countdownRef = useRef(AUTO_REFRESH_SECONDS);
 	const displayRef = useRef<HTMLSpanElement>(null);
 
-	// Check authentication
+	// Deep-link support: /tasks?open=<taskId> (used by Dashboard's
+	// "Upcoming Deadlines" links) opens that task's detail view once
+	// tasks have loaded.
 	useEffect(() => {
-		const checkAuth = async () => {
-			try {
-				const res = await fetch("/api/auth/me");
-				if (res.ok) {
-					const userData = await res.json();
-					setCurrentUser(userData);
-				} else {
-					// Redirect to homepage if not authenticated
-					window.location.href = "/";
-					return;
-				}
-			} catch (error) {
-				console.error('Auth check error:', error);
-				window.location.href = "/";
-				return;
-			}
-		};
-
-		checkAuth();
-	}, []);
+		const openId = searchParams.get("open");
+		if (openId && tasks.some((t) => t.id === openId)) {
+			setViewingId(openId);
+		}
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [searchParams, tasks.length]);
 
 	function toggleSelect(id: string) {
 		setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
@@ -1288,29 +1278,41 @@ export default function TasksPage() {
 									className="rounded border px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200"
 									onClick={async () => {
 										if (!confirm(`Archive ${selectedIds.length} task${selectedIds.length !== 1 ? 's' : ''}?`)) return;
+										let failures = 0;
 										for (const id of selectedIds) {
-											await fetch(`/api/tasks/${id}`, { method: "PATCH", headers: {"Content-Type":"application/json"}, body: JSON.stringify({ status: "ARCHIVED" }) });
+											const res = await fetch(`/api/tasks/${id}`, { method: "PATCH", headers: {"Content-Type":"application/json"}, body: JSON.stringify({ status: "ARCHIVED" }) });
+											if (!res.ok) failures++;
 										}
 										clearSelection();
 										load();
+										if (failures > 0) {
+											setError(`${failures} of ${selectedIds.length} task${failures !== 1 ? 's' : ''} couldn't be archived (you can only archive tasks assigned to you).`);
+										}
 									}}
 								>
 									Bulk Archive ({selectedIds.length})
 								</button>
+								{isAdmin && (
 								<button
 									type="button"
 									className="rounded border px-3 py-2 text-sm hover:bg-red-50 text-red-700 border-red-300"
 									onClick={async () => {
 										if (!confirm(`Delete ${selectedIds.length} task${selectedIds.length !== 1 ? 's' : ''}? This cannot be undone.`)) return;
+										let failures = 0;
 										for (const id of selectedIds) {
-											await fetch(`/api/tasks/${id}`, { method: "DELETE" });
+											const res = await fetch(`/api/tasks/${id}`, { method: "DELETE" });
+											if (!res.ok) failures++;
 										}
 										clearSelection();
 										load();
+										if (failures > 0) {
+											setError(`${failures} of ${selectedIds.length} task${failures !== 1 ? 's' : ''} couldn't be deleted.`);
+										}
 									}}
 								>
 									Bulk Delete ({selectedIds.length})
 								</button>
+								)}
 							</>
 						)}
 						<span className="text-xs text-gray-600" ref={displayRef}>Auto refresh in {AUTO_REFRESH_SECONDS}s</span>
@@ -2697,5 +2699,13 @@ export default function TasksPage() {
 				);
 			})()}
 		</div>
+	);
+}
+
+export default function TasksPage() {
+	return (
+		<Suspense fallback={<div className="text-center text-gray-500 py-12">Loading...</div>}>
+			<TasksPageInner />
+		</Suspense>
 	);
 }

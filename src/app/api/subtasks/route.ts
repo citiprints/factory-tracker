@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/session";
 import { z } from "zod";
+import { SUBTASK_STATUSES } from "@/lib/constants";
 
 const CreateSubtaskSchema = z.object({
 	taskId: z.string().min(1),
@@ -13,7 +14,7 @@ const CreateSubtaskSchema = z.object({
 
 const UpdateSubtaskSchema = z.object({
 	title: z.string().min(1).optional(),
-	status: z.enum(["TODO", "IN_PROGRESS", "DONE"]).optional(),
+	status: z.enum(SUBTASK_STATUSES).optional(),
 	assigneeId: z.string().nullable().optional(),
 	dueAt: z.string().nullable().optional(),
 	estimatedHours: z.number().nullable().optional(),

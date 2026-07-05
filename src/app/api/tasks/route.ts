@@ -2,13 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/session";
 import { notifyUser } from "@/lib/notify";
+import { TASK_STATUSES, TASK_PRIORITIES } from "@/lib/constants";
 import { z } from "zod";
 
 const CreateTaskSchema = z.object({
 	title: z.string().min(1),
 	description: z.string().optional(),
-	status: z.enum(["TODO","IN_PROGRESS","BLOCKED","DONE","CANCELLED","ARCHIVED","CLIENT_TO_REVERT"]).optional(),
-	priority: z.enum(["LOW","MEDIUM","HIGH","URGENT"]).optional(),
+	status: z.enum(TASK_STATUSES).optional(),
+	priority: z.enum(TASK_PRIORITIES).optional(),
 	startAt: z.string().nullable().optional(),
 	dueAt: z.string().nullable().optional(),
 	estimatedHours: z.number().optional(),

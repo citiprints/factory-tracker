@@ -52,7 +52,7 @@ export async function DELETE(_: Request, { params }: { params: Promise<{ id: str
 	const user = await getCurrentUser();
 	if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 	
-	// Only admins can delete users
+	// Only admins can remove users
 	if (user.role !== "ADMIN") {
 		return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 	}
@@ -65,7 +65,16 @@ export async function DELETE(_: Request, { params }: { params: Promise<{ id: str
 			return NextResponse.json({ error: "Cannot delete your own account" }, { status: 400 });
 		}
 		
-		await prisma.user.delete({ where: { id } });
+		// Soft-delete rather than hard-delete: a real employee will almost
+		// always have tasks, sessions, attendance logs, or shifts referencing
+		// them, and none of those relations cascade -- a hard delete throws
+		// a foreign-key error and this would just 500. Deactivating matches
+		// the `active: true` filter already used everywhere else (task
+		// assignee lists, /api/users, etc.), so a deactivated user quietly
+		// stops appearing as assignable without deleting their history.
+		await prisma.user.update({ where: { id }, data: { active: false } });
+		// Also kill any active sessions so a deactivated account can't keep using the app.
+		await prisma.session.deleteMany({ where: { userId: id } });
 		return NextResponse.json({ success: true });
 	} catch (error) {
 		return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });

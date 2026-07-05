@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { getCurrentUser } from "@/lib/session";
+import { getCurrentUser, isAdmin } from "@/lib/session";
 import { z } from "zod";
 
 const UpdateCustomerSchema = z.object({
@@ -14,6 +14,7 @@ const UpdateCustomerSchema = z.object({
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
     const user = await getCurrentUser();
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!isAdmin(user)) return NextResponse.json({ error: "Only admins/managers can edit customers." }, { status: 403 });
     try {
         const json = await request.json();
         const data = UpdateCustomerSchema.parse(json);
@@ -29,9 +30,18 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 export async function DELETE(_: Request, { params }: { params: Promise<{ id: string }> }) {
     const user = await getCurrentUser();
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!isAdmin(user)) return NextResponse.json({ error: "Only admins/managers can delete customers." }, { status: 403 });
     const { id } = await params;
-    await prisma.customer.delete({ where: { id } });
-    return NextResponse.json({ ok: true });
+    try {
+        await prisma.customer.delete({ where: { id } });
+        return NextResponse.json({ ok: true });
+    } catch (error) {
+        // Fails if the customer still has tasks referencing it (FK constraint).
+        return NextResponse.json(
+            { error: "Can't delete a customer that still has tasks. Reassign or delete those tasks first." },
+            { status: 409 }
+        );
+    }
 }
 
 

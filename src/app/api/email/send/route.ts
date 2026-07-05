@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { getCurrentUser } from "@/lib/session";
+import { getCurrentUser, isAdmin } from "@/lib/session";
 import { sendEmail } from "@/lib/email";
 
 const SendEmailSchema = z.object({
@@ -17,6 +17,9 @@ export async function POST(req: NextRequest) {
     const user = await getCurrentUser();
     if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    if (!isAdmin(user)) {
+      return NextResponse.json({ error: "Only admins/managers can send emails." }, { status: 403 });
     }
 
     const json = await req.json();

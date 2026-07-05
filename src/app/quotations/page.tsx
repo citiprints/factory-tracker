@@ -1,7 +1,6 @@
 "use client";
 import React, { useEffect, useState } from "react";
-import { getCurrentUser } from "@/lib/session";
-import { redirect } from "next/navigation";
+import { useCurrentUser } from "../UserContext";
 
 type Quotation = {
 	id: string;
@@ -156,7 +155,7 @@ function DateTimeSelector({ label, value, onChange }: { label: string; value: st
 }
 
 export default function QuotationsPage() {
-	const [currentUser, setCurrentUser] = useState<{ id: string; name: string } | null>(null);
+	const currentUser = useCurrentUser();
 	const [quotations, setQuotations] = useState<Quotation[]>([]);
 	const [loading, setLoading] = useState(true);
 	const [viewingId, setViewingId] = useState<string | null>(null);
@@ -179,30 +178,7 @@ export default function QuotationsPage() {
 	const [convertStartAt, setConvertStartAt] = useState<string>("");
 	const [convertDueAt, setConvertDueAt] = useState<string>("");
 
-	// Check authentication
-	useEffect(() => {
-		const checkAuth = async () => {
-			try {
-				const res = await fetch("/api/auth/me");
-				if (res.ok) {
-					const userData = await res.json();
-					setCurrentUser(userData);
-				} else {
-					// Redirect to homepage if not authenticated
-					window.location.href = "/";
-					return;
-				}
-			} catch (error) {
-				console.error('Auth check error:', error);
-				window.location.href = "/";
-				return;
-			}
-		};
-
-		checkAuth();
-	}, []);
-
-	async function load() {
+		async function load() {
 		setLoading(true);
 		try {
 			const [resQuotations, resCustomers, resUsers] = await Promise.all([

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { getCurrentUser } from "@/lib/session";
+import { getCurrentUser, isAdmin } from "@/lib/session";
 import { z } from "zod";
 
 const CreateFieldSchema = z.object({
@@ -21,6 +21,7 @@ export async function GET() {
 export async function POST(request: Request) {
 	const user = await getCurrentUser();
 	if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+	if (!isAdmin(user)) return NextResponse.json({ error: "Only admins/managers can create custom fields." }, { status: 403 });
 	try {
 		const json = await request.json();
 		const data = CreateFieldSchema.parse(json);

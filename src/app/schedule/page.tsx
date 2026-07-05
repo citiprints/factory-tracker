@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { useCurrentUser } from "../UserContext";
 
 type Shift = {
   id: string;
@@ -16,9 +17,10 @@ type Shift = {
 type UserOption = { id: string; name: string; role: string };
 
 export default function SchedulePage() {
+  const currentUser = useCurrentUser();
+  const isAdmin = currentUser?.role === "ADMIN" || currentUser?.role === "MANAGER";
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [users, setUsers] = useState<UserOption[]>([]);
-  const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -32,16 +34,11 @@ export default function SchedulePage() {
   });
 
   async function load() {
-    const meRes = await fetch("/api/auth/me");
-    if (meRes.ok) {
-      const me = await meRes.json();
-      setIsAdmin(me.role === "ADMIN" || me.role === "MANAGER");
-      if (me.role === "ADMIN" || me.role === "MANAGER") {
-        const usersRes = await fetch("/api/users");
-        if (usersRes.ok) {
-          const data = await usersRes.json();
-          setUsers(data.users ?? data);
-        }
+    if (isAdmin) {
+      const usersRes = await fetch("/api/users");
+      if (usersRes.ok) {
+        const data = await usersRes.json();
+        setUsers(data.users ?? data);
       }
     }
     const shiftsRes = await fetch("/api/shifts");
