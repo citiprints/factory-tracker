@@ -3,12 +3,15 @@ import { prisma } from "@/lib/db";
 import { getCurrentUser, isAdmin } from "@/lib/session";
 import { z } from "zod";
 
+const emptyToUndef = (v: unknown) =>
+    typeof v === "string" && v.trim() === "" ? undefined : v;
+
 const UpdateCustomerSchema = z.object({
     name: z.string().min(1).optional(),
-    email: z.string().email().optional(),
-    phone: z.string().optional(),
-    company: z.string().optional(),
-    address: z.string().optional(),
+    email: z.preprocess(emptyToUndef, z.string().email().optional()),
+    phone: z.preprocess(emptyToUndef, z.string().optional()),
+    company: z.preprocess(emptyToUndef, z.string().optional()),
+    address: z.preprocess(emptyToUndef, z.string().optional()),
 });
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {

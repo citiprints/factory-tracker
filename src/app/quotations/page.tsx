@@ -42,114 +42,38 @@ function QuotationsSkeleton() {
 
 // DateTimeSelector component for convert form
 function DateTimeSelector({ label, value, onChange }: { label: string; value: string; onChange: (next: string) => void }) {
-	const [open, setOpen] = useState(false);
-	
-	// Handle click outside to close picker
-	useEffect(() => {
-		if (!open) return;
-		
-		const handleClickOutside = (event: MouseEvent) => {
-			const target = event.target as Element;
-			if (!target.closest('.date-time-selector')) {
-				setOpen(false);
-			}
-		};
-		
-		document.addEventListener('mousedown', handleClickOutside);
-		return () => document.removeEventListener('mousedown', handleClickOutside);
-	}, [open]);
-	const isoLike = value; // "YYYY-MM-DDTHH:MM"
-	const datePart = isoLike ? isoLike.split("T")[0] : "";
-	const timePart = isoLike ? (isoLike.split("T")[1] || "") : "";
+	// Native date + time inputs: never clipped by modal overflow, and use the
+	// platform picker on phones.
+	const datePart = value ? value.split("T")[0] : "";
+	const timePart = value ? (value.split("T")[1] || "") : "";
 
 	function updateDate(nextDate: string) {
 		if (!nextDate && !timePart) return onChange("");
-		const next = `${nextDate || ""}${nextDate && timePart ? "T" : nextDate ? "T00:00" : ""}${timePart || ""}`.trim();
-		onChange(next);
+		onChange(nextDate ? `${nextDate}T${timePart || "00:00"}` : "");
 	}
 
 	function updateTime(nextTime: string) {
 		if (!nextTime && !datePart) return onChange("");
-		const next = `${datePart || new Date().toISOString().slice(0,10)}T${nextTime || "00:00"}`;
-		onChange(next);
+		onChange(`${datePart || new Date().toISOString().slice(0, 10)}T${nextTime || "00:00"}`);
 	}
-
-	const initialForMonth = datePart ? new Date(datePart) : new Date();
-	const [monthCursor, setMonthCursor] = useState(new Date(initialForMonth.getFullYear(), initialForMonth.getMonth(), 1));
-
-	function formatYmd(d: Date) {
-		const y = d.getFullYear();
-		const m = `${d.getMonth()+1}`.padStart(2, "0");
-		const day = `${d.getDate()}`.padStart(2, "0");
-		return `${y}-${m}-${day}`;
-	}
-
-	const daysInMonth = new Date(monthCursor.getFullYear(), monthCursor.getMonth() + 1, 0).getDate();
-	const startWeekday = new Date(monthCursor.getFullYear(), monthCursor.getMonth(), 1).getDay();
-	const dayButtons: React.ReactElement[] = [];
-	for (let i = 0; i < startWeekday; i++) {
-		dayButtons.push(<div key={`blank-${i}`} />);
-	}
-	for (let d = 1; d <= daysInMonth; d++) {
-		const thisDate = new Date(monthCursor.getFullYear(), monthCursor.getMonth(), d);
-		const ymd = formatYmd(thisDate);
-		const selected = datePart === ymd;
-		dayButtons.push(
-			<button
-				key={d}
-				type="button"
-				className={`w-8 h-8 text-sm rounded ${selected ? "bg-blue-600 text-white" : "hover:bg-gray-100"}`}
-				onClick={() => updateDate(ymd)}
-			>
-				{d}
-			</button>
-		);
-	}
-
-	const display = value ? new Date(value).toLocaleString() : `Select ${label}`;
 
 	return (
-		<div className="relative cursor-pointer date-time-selector">
-			<div className="w-full border rounded px-3 py-2 text-left" onClick={() => setOpen(v => !v)}>
-				<span className="block text-xs text-gray-600">{label}</span>
-				<span>{display}</span>
+		<div>
+			<span className="field-label">{label}</span>
+			<div className="flex gap-2">
+				<input
+					type="date"
+					className="input flex-[3]"
+					value={datePart}
+					onChange={(e) => updateDate(e.target.value)}
+				/>
+				<input
+					type="time"
+					className="input flex-[2]"
+					value={timePart}
+					onChange={(e) => updateTime(e.target.value)}
+				/>
 			</div>
-			{open && (
-				<div className="absolute top-full left-0 right-0 z-10 bg-white border rounded-lg shadow-lg p-3 mt-1">
-					<div className="flex items-center justify-between mb-2">
-						<button
-							type="button"
-							onClick={(e) => { e.stopPropagation(); setMonthCursor(new Date(monthCursor.getFullYear(), monthCursor.getMonth() - 1, 1)); }}
-							className="p-1 hover:bg-gray-100 rounded"
-						>
-							←
-						</button>
-						<span className="font-medium">
-							{monthCursor.toLocaleDateString(undefined, { month: "long", year: "numeric" })}
-						</span>
-						<button
-							type="button"
-							onClick={(e) => { e.stopPropagation(); setMonthCursor(new Date(monthCursor.getFullYear(), monthCursor.getMonth() + 1, 1)); }}
-							className="p-1 hover:bg-gray-100 rounded"
-						>
-							→
-						</button>
-					</div>
-					<div className="grid grid-cols-7 gap-1 mb-2">
-						{["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(day => (
-							<div key={day} className="text-xs text-gray-500 text-center py-1">{day}</div>
-						))}
-						{dayButtons}
-					</div>
-					<input
-						type="time"
-						value={timePart}
-						onChange={(e) => updateTime(e.target.value)}
-						onClick={(e) => e.stopPropagation()}
-						className="input text-sm"
-					/>
-				</div>
-			)}
 		</div>
 	);
 }
@@ -908,6 +832,8 @@ export default function QuotationsPage() {
 										<option value="Stickers">Stickers</option>
 										<option value="Cards">Cards</option>
 										<option value="Invitation">Invitation</option>
+										<option value="Paperboard Boxes">Paperboard Boxes</option>
+										<option value="Others">Others</option>
 									</select>
 								</div>
 								<div>

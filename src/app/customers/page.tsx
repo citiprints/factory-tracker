@@ -54,6 +54,10 @@ export default function CustomersPage() {
     async function onCreate(e: React.FormEvent) {
         e.preventDefault();
         setError(null);
+        if (!email.trim() && !phone.trim()) {
+            setError("Add an email address or a phone number — either one is enough.");
+            return;
+        }
         setCreating(true);
         try {
             const res = await fetch("/api/customers", {

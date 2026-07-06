@@ -184,17 +184,21 @@ function TasksPageInner() {
 
 	async function createNewCustomer() {
 		if (!newCustomerName.trim()) return;
-		
+		if (!newCustomerEmail.trim() && !newCustomerPhone.trim()) {
+			setError("Add an email address or a phone number — either one is enough.");
+			return;
+		}
+
 		try {
 			const res = await fetch("/api/customers", {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
 				body: JSON.stringify({
-					name: newCustomerName,
-					email: newCustomerEmail,
-					phone: newCustomerPhone,
-					company: newCustomerCompany,
-					address: newCustomerAddress
+					name: newCustomerName.trim(),
+					email: newCustomerEmail.trim() || undefined,
+					phone: newCustomerPhone.trim() || undefined,
+					company: newCustomerCompany.trim() || undefined,
+					address: newCustomerAddress.trim() || undefined
 				})
 			});
 			
@@ -564,97 +568,26 @@ function TasksPageInner() {
 	}
 
 	function DateTimeSelector({ label, value, onChange }: { label: string; value: string; onChange: (next: string) => void }) {
-		const [open, setOpen] = useState(false);
-		const isoLike = value; // "YYYY-MM-DDTHH:MM"
-		const datePart = isoLike ? isoLike.split("T")[0] : "";
-		const timePart = isoLike ? (isoLike.split("T")[1] || "") : "";
+		const datePart = value ? value.split("T")[0] : "";
+		const timePart = value ? (value.split("T")[1] || "") : "";
 
 		function updateDate(nextDate: string) {
 			if (!nextDate && !timePart) return onChange("");
-			const next = `${nextDate || ""}${nextDate && timePart ? "T" : nextDate ? "T00:00" : ""}${timePart || ""}`.trim();
-			onChange(next);
+			onChange(nextDate ? `${nextDate}T${timePart || "00:00"}` : "");
 		}
 
 		function updateTime(nextTime: string) {
 			if (!nextTime && !datePart) return onChange("");
-			const next = `${datePart || new Date().toISOString().slice(0,10)}T${nextTime || "00:00"}`;
-			onChange(next);
+			onChange(`${datePart || new Date().toISOString().slice(0, 10)}T${nextTime || "00:00"}`);
 		}
-
-		const initialForMonth = datePart ? new Date(datePart) : new Date();
-		const [monthCursor, setMonthCursor] = useState(new Date(initialForMonth.getFullYear(), initialForMonth.getMonth(), 1));
-
-		function formatYmd(d: Date) {
-			const y = d.getFullYear();
-			const m = `${d.getMonth()+1}`.padStart(2, "0");
-			const day = `${d.getDate()}`.padStart(2, "0");
-			return `${y}-${m}-${day}`;
-		}
-
-		const daysInMonth = new Date(monthCursor.getFullYear(), monthCursor.getMonth() + 1, 0).getDate();
-		const startWeekday = new Date(monthCursor.getFullYear(), monthCursor.getMonth(), 1).getDay();
-		const dayButtons: React.ReactElement[] = [];
-		for (let i = 0; i < startWeekday; i++) {
-			dayButtons.push(<div key={`blank-${i}`} />);
-		}
-		for (let d = 1; d <= daysInMonth; d++) {
-			const thisDate = new Date(monthCursor.getFullYear(), monthCursor.getMonth(), d);
-			const ymd = formatYmd(thisDate);
-			const selected = datePart === ymd;
-			dayButtons.push(
-				<button
-					key={`d-${d}`}
-					type="button"
-					className={`px-2 py-1 rounded text-sm ${selected ? "bg-gray-900 text-white" : "hover:bg-gray-100"}`}
-					onClick={() => updateDate(ymd)}
-				>
-					{d}
-				</button>
-			);
-		}
-
-		const hour = timePart ? (timePart.split(":")[0] || "00") : "";
-		const minute = timePart ? (timePart.split(":")[1] || "00") : "";
-		const minuteOptions = ["00","15","30","45"];
-
-		const display = value ? new Date(value).toLocaleString() : `Select ${label}`;
 
 		return (
-			<div className="relative cursor-pointer" onClick={() => setOpen(v => !v)}>
-				<div className="w-full border rounded px-3 py-2 text-left">
-					<span className="block text-xs text-gray-600">{label}</span>
-					<span>{display}</span>
+			<div>
+				<span className="field-label">{label}</span>
+				<div className="flex gap-2">
+					<input type="date" className="input flex-[3]" value={datePart} onChange={(e) => updateDate(e.target.value)} />
+					<input type="time" className="input flex-[2]" value={timePart} onChange={(e) => updateTime(e.target.value)} />
 				</div>
-				{open && (
-					<div className="absolute z-10 mt-1 w-72 rounded border bg-white p-3 shadow" onClick={(e) => e.stopPropagation()}>
-						<div className="flex items-center justify-between mb-2">
-							<button type="button" className="px-2 py-1 rounded border" onClick={() => setMonthCursor(new Date(monthCursor.getFullYear(), monthCursor.getMonth() - 1, 1))}>{"<"}</button>
-							<div className="text-sm font-medium">{monthCursor.toLocaleString(undefined, { month: "long", year: "numeric" })}</div>
-							<button type="button" className="px-2 py-1 rounded border" onClick={() => setMonthCursor(new Date(monthCursor.getFullYear(), monthCursor.getMonth() + 1, 1))}>{">"}</button>
-						</div>
-						<div className="grid grid-cols-7 gap-1 text-center text-xs text-gray-600 mb-1">
-							<div>Su</div><div>Mo</div><div>Tu</div><div>We</div><div>Th</div><div>Fr</div><div>Sa</div>
-						</div>
-						<div className="grid grid-cols-7 gap-1 mb-3">
-							{dayButtons}
-						</div>
-						<div className="flex items-center gap-2">
-							<select className="input w-auto inline-block text-sm !min-h-8 !py-1" value={hour} onChange={e => updateTime(`${e.target.value || "00"}:${minute || "00"}`)}>
-								<option value="">HH</option>
-								{Array.from({length:24}).map((_,h) => {
-									const hv = `${h}`.padStart(2, "0");
-									return <option key={hv} value={hv}>{hv}</option>;
-								})}
-							</select>
-							<select className="input w-auto inline-block text-sm !min-h-8 !py-1" value={minute} onChange={e => updateTime(`${hour || "00"}:${e.target.value}`)}>
-								<option value="">MM</option>
-								{minuteOptions.map(m => <option key={m} value={m}>{m}</option>)}
-							</select>
-							<button type="button" className="ml-auto text-sm px-2 py-1" onClick={() => { onChange(""); setOpen(false); }}>Clear</button>
-							<button type="button" className="text-sm px-2 py-1 rounded bg-gray-900 text-white" onClick={() => setOpen(false)}>Done</button>
-						</div>
-					</div>
-				)}
 			</div>
 		);
 	}
@@ -796,14 +729,14 @@ function TasksPageInner() {
 							<input
 								type="email"
 								className="input"
-								placeholder="Email (optional)"
+								placeholder="Email (this or phone)"
 								value={newCustomerEmail}
 								onChange={e => setNewCustomerEmail(e.target.value)}
 							/>
 							<input
 								type="tel"
 								className="input"
-								placeholder="Phone (optional)"
+								placeholder="Phone (this or email)"
 								value={newCustomerPhone}
 								onChange={e => setNewCustomerPhone(e.target.value)}
 							/>
@@ -865,6 +798,8 @@ function TasksPageInner() {
 						<option value="Stickers">Stickers</option>
 						<option value="Cards">Cards</option>
 						<option value="Invitation">Invitation</option>
+						<option value="Paperboard Boxes">Paperboard Boxes</option>
+						<option value="Others">Others</option>
 					</select>
 					
 					{/* Quantity field */}
@@ -1374,6 +1309,7 @@ function TasksPageInner() {
 								<option value="Stickers">Stickers</option>
 								<option value="Cards">Cards</option>
 								<option value="Invitation">Invitation</option>
+								<option value="Paperboard Boxes">Paperboard Boxes</option>
 								<option value="Others">Others</option>
 							</select>
 				</div>
@@ -1555,14 +1491,14 @@ function TasksPageInner() {
 													<input
 														type="email"
 														className="input"
-														placeholder="Email (optional)"
+														placeholder="Email (this or phone)"
 														value={newCustomerEmail}
 														onChange={e => setNewCustomerEmail(e.target.value)}
 													/>
 													<input
 														type="tel"
 														className="input"
-														placeholder="Phone (optional)"
+														placeholder="Phone (this or email)"
 														value={newCustomerPhone}
 														onChange={e => setNewCustomerPhone(e.target.value)}
 													/>
@@ -1628,6 +1564,8 @@ function TasksPageInner() {
 												<option value="Stickers">Stickers</option>
 												<option value="Cards">Cards</option>
 												<option value="Invitation">Invitation</option>
+												<option value="Paperboard Boxes">Paperboard Boxes</option>
+												<option value="Others">Others</option>
 											</select>
 										</div>
 										<div>

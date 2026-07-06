@@ -33,7 +33,8 @@ export async function GET() {
 		});
 
 		const listResponse = await s3Client.send(listCommand);
-		const files = listResponse.Contents || [];
+		// The brand logo lives at a fixed key and is managed separately.
+		const files = (listResponse.Contents || []).filter((f) => f.Key !== "branding-logo");
 
 		// Get additional metadata for each file
 		const fileInfos = await Promise.all(

@@ -133,8 +133,21 @@ function ThemeToggle() {
   );
 }
 
-/* Registration-mark brand glyph — a printer's motif. */
+/* Brand: uses the uploaded Citiprints logo if one exists (set from the
+   Files page); otherwise falls back to the registration-mark glyph. */
 function BrandMark() {
+  const [hasLogo, setHasLogo] = useState(true);
+  if (hasLogo) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src="/api/branding"
+        alt="Citiprints"
+        className="w-7 h-7 rounded object-contain"
+        onError={() => setHasLogo(false)}
+      />
+    );
+  }
   return (
     <svg viewBox="0 0 24 24" className="w-6 h-6 text-accent" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
       <circle cx="12" cy="12" r="8" />
@@ -154,6 +167,29 @@ export default function AppShell({
 }) {
   const pathname = usePathname();
   const [loggingOut, setLoggingOut] = useState(false);
+  const [counts, setCounts] = useState<{ pendingTasks: number; pendingQuotes: number } | null>(null);
+
+  // Nav badges: refresh on every navigation so counts stay honest.
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    fetch("/api/counts")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!cancelled && d && typeof d.pendingTasks === "number") setCounts(d);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [user, pathname]);
+
+  const badgeFor = (href: string): number => {
+    if (!counts) return 0;
+    if (href === "/tasks") return counts.pendingTasks;
+    if (href === "/quotations") return counts.pendingQuotes;
+    return 0;
+  };
 
   const isAdmin = user?.role === "ADMIN" || user?.role === "MANAGER";
   const nav = isAdmin ? ADMIN_NAV : WORKER_NAV;
@@ -207,19 +243,27 @@ export default function AppShell({
             <div key={i}>
               {section.title && <div className="nav-section">{section.title}</div>}
               {!section.title && <div className="mt-4" />}
-              {section.items.map((item) => (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className="navlink"
-                  data-active={isActive(item.href)}
-                >
-                  <span className="w-[18px] h-[18px] shrink-0">
-                    <Icon d={ICONS[item.icon]} />
-                  </span>
-                  {item.label}
-                </Link>
-              ))}
+              {section.items.map((item) => {
+                const badge = badgeFor(item.href);
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className="navlink"
+                    data-active={isActive(item.href)}
+                  >
+                    <span className="w-[18px] h-[18px] shrink-0">
+                      <Icon d={ICONS[item.icon]} />
+                    </span>
+                    <span className="flex-1">{item.label}</span>
+                    {badge > 0 && (
+                      <span className="min-w-5 h-5 px-1.5 rounded-full bg-accent text-on-accent text-[11px] font-semibold font-mono inline-flex items-center justify-center">
+                        {badge > 99 ? "99+" : badge}
+                      </span>
+                    )}
+                  </Link>
+                );
+              })}
             </div>
           ))}
         </nav>
@@ -282,12 +326,22 @@ export default function AppShell({
           style={{ paddingBottom: "max(0.4rem, env(safe-area-inset-bottom))" }}
         >
           <div className="flex">
-            {tabs.map((t) => (
-              <Link key={t.href} href={t.href} className="tabbar-item" data-active={isActive(t.href)}>
-                <Icon d={ICONS[t.icon]} />
-                {t.label}
-              </Link>
-            ))}
+            {tabs.map((t) => {
+              const badge = badgeFor(t.href);
+              return (
+                <Link key={t.href} href={t.href} className="tabbar-item relative" data-active={isActive(t.href)}>
+                  <span className="relative inline-flex">
+                    <Icon d={ICONS[t.icon]} />
+                    {badge > 0 && (
+                      <span className="absolute -top-1.5 -right-3 min-w-4 h-4 px-1 rounded-full bg-accent text-on-accent text-[10px] font-semibold font-mono inline-flex items-center justify-center leading-none">
+                        {badge > 99 ? "99+" : badge}
+                      </span>
+                    )}
+                  </span>
+                  {t.label}
+                </Link>
+              );
+            })}
           </div>
         </nav>
       </div>

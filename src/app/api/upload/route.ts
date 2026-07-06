@@ -20,7 +20,7 @@ const s3 = new S3Client({
 	forcePathStyle: true, // important for R2
 });
 
-export async function POST_R2_UPLOAD(request: NextRequest) {
+export async function POST(request: NextRequest) {
 	const user = await getCurrentUser();
 	if (!user) {
 		return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -63,6 +63,3 @@ export async function POST_R2_UPLOAD(request: NextRequest) {
 		return NextResponse.json({ error: "Failed to upload file" }, { status: 500 });
 	}
 }
-
-// Alias for backward compatibility
-export const POST = POST_R2_UPLOAD;

@@ -3,13 +3,28 @@ import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/session";
 import { z } from "zod";
 
-const CreateCustomerSchema = z.object({
-    name: z.string().min(1),
-    email: z.string().email().optional(),
-    phone: z.string().optional(),
-    company: z.string().optional(),
-    address: z.string().optional(),
-});
+// Empty strings from forms are treated as "not provided".
+const optionalTrimmed = z.preprocess(
+    (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
+    z.string().optional()
+);
+const optionalEmail = z.preprocess(
+    (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
+    z.string().email().optional()
+);
+
+const CreateCustomerSchema = z
+    .object({
+        name: z.string().min(1),
+        email: optionalEmail,
+        phone: optionalTrimmed,
+        company: optionalTrimmed,
+        address: optionalTrimmed,
+    })
+    .refine((d) => d.email || d.phone, {
+        message: "Add an email address or a phone number (either one is enough).",
+        path: ["email"],
+    });
 
 export async function GET() {
     try {

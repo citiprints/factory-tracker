@@ -18,6 +18,59 @@ export default function FilesPage() {
 	const [deletingKey, setDeletingKey] = useState<string | null>(null);
 	const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
 	const [bulkDeleting, setBulkDeleting] = useState(false);
+	const [uploading, setUploading] = useState(false);
+	const fileInputRef = React.useRef<HTMLInputElement>(null);
+	const logoInputRef = React.useRef<HTMLInputElement>(null);
+	const [settingLogo, setSettingLogo] = useState(false);
+	const isAdminUser = currentUser?.role === "ADMIN" || currentUser?.role === "MANAGER";
+
+	async function handleLogoUpload(e: React.ChangeEvent<HTMLInputElement>) {
+		const file = e.target.files?.[0];
+		if (!file) return;
+		setSettingLogo(true);
+		setError(null);
+		try {
+			const formData = new FormData();
+			formData.append("file", file);
+			const res = await fetch("/api/branding", { method: "POST", body: formData });
+			if (res.ok) {
+				// Reload so the sidebar/header pick up the new logo.
+				window.location.reload();
+			} else {
+				const data = await res.json().catch(() => ({}));
+				setError(data.error || "Couldn't set the logo. Try again.");
+			}
+		} catch {
+			setError("Couldn't set the logo. Check your connection and try again.");
+		} finally {
+			setSettingLogo(false);
+			if (logoInputRef.current) logoInputRef.current.value = "";
+		}
+	}
+
+	async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
+		const picked = e.target.files;
+		if (!picked || picked.length === 0) return;
+		setUploading(true);
+		setError(null);
+		let failures = 0;
+		for (const file of Array.from(picked)) {
+			try {
+				const formData = new FormData();
+				formData.append("file", file);
+				const res = await fetch("/api/upload", { method: "POST", body: formData });
+				if (!res.ok) failures++;
+			} catch {
+				failures++;
+			}
+		}
+		setUploading(false);
+		if (fileInputRef.current) fileInputRef.current.value = "";
+		if (failures > 0) {
+			setError(`${failures} of ${picked.length} file${picked.length > 1 ? "s" : ""} couldn't be uploaded. Try again.`);
+		}
+		await loadFiles();
+	}
 
 		useEffect(() => {
 		loadFiles();
@@ -153,6 +206,37 @@ export default function FilesPage() {
 			<div className="flex justify-between items-center mb-6">
 				<h1 className="text-2xl font-semibold tracking-tight">Files</h1>
 				<div className="flex gap-2">
+					<input
+						ref={fileInputRef}
+						type="file"
+						multiple
+						className="hidden"
+						onChange={handleUpload}
+					/>
+					<input
+						ref={logoInputRef}
+						type="file"
+						accept="image/*"
+						className="hidden"
+						onChange={handleLogoUpload}
+					/>
+					{isAdminUser && (
+						<button
+							onClick={() => logoInputRef.current?.click()}
+							disabled={settingLogo}
+							className="btn btn-outline"
+							title="Shown in the sidebar and header. PNG/JPG/SVG, under 2 MB."
+						>
+							{settingLogo ? "Setting…" : "Set brand logo"}
+						</button>
+					)}
+					<button
+						onClick={() => fileInputRef.current?.click()}
+						disabled={uploading}
+						className="btn btn-primary"
+					>
+						{uploading ? "Uploading…" : "+ Upload files"}
+					</button>
 					{selectedFiles.size > 0 && (
 						<button
 							onClick={bulkDeleteFiles}
