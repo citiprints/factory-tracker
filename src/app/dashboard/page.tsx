@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useCurrentUser } from "../UserContext";
+import { PageHeader, EmptyState, statusChip, priorityChip, ticketColor } from "@/components/ui";
 
 type Task = {
 	id: string;
@@ -15,44 +16,70 @@ type Task = {
 	customerRef?: { id: string; name: string } | null;
 	customFields?: any;
 	assignments?: { id: string; user: { id: string; name: string }; role: string }[];
-	subtasks?: Subtask[];
-};
-
-type Subtask = {
-	id: string;
-	title: string;
-	status: "TODO" | "IN_PROGRESS" | "BLOCKED" | "DONE";
-	assigneeId?: string | null;
-	dueAt?: string | null;
-	order: number;
 };
 
 function DashboardSkeleton() {
 	return (
 		<div className="space-y-6">
-			<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+			<div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
 				{[1, 2, 3, 4].map((i) => (
-					<div key={i} className="border rounded-lg p-4">
-						<div className="animate-pulse">
-							<div className="h-4 bg-gray-200 rounded w-1/2 mb-2"></div>
-							<div className="h-8 bg-gray-200 rounded w-1/3"></div>
-						</div>
+					<div key={i} className="card card-pad">
+						<div className="skeleton h-3 w-1/2 mb-3" />
+						<div className="skeleton h-8 w-1/3" />
 					</div>
 				))}
 			</div>
-			<div className="border rounded-lg p-4">
-				<div className="animate-pulse">
-					<div className="h-6 bg-gray-200 rounded w-1/4 mb-4"></div>
-					<div className="space-y-4">
-						{[1, 2, 3].map((i) => (
-							<div key={i} className="border rounded p-3">
-								<div className="h-4 bg-gray-200 rounded w-2/3"></div>
-							</div>
-						))}
-					</div>
+			<div className="card card-pad">
+				<div className="skeleton h-5 w-1/4 mb-4" />
+				<div className="space-y-3">
+					{[1, 2, 3].map((i) => (
+						<div key={i} className="skeleton h-14 w-full" />
+					))}
 				</div>
 			</div>
 		</div>
+	);
+}
+
+function ClockCard() {
+	const [state, setState] = useState<null | { clockedIn: boolean; since?: string; location?: string }>(null);
+
+	useEffect(() => {
+		fetch("/api/attendance/status")
+			.then((r) => (r.ok ? r.json() : null))
+			.then((d) => {
+				if (!d) return;
+				setState({
+					clockedIn: d.clockedIn,
+					since: d.openLog?.clockInAt,
+					location: d.openLog?.location?.name,
+				});
+			})
+			.catch(() => {});
+	}, []);
+
+	if (!state) return null;
+
+	return (
+		<Link
+			href="/attendance"
+			className="ticket block p-4 flex items-center justify-between gap-3 hover:shadow-md transition-shadow"
+			style={{ ["--ticket" as any]: state.clockedIn ? "var(--ok)" : "var(--warn)" }}
+		>
+			<div className="min-w-0">
+				<div className="font-semibold">
+					{state.clockedIn ? "You're clocked in" : "You're not clocked in"}
+				</div>
+				<div className="meta mt-0.5">
+					{state.clockedIn
+						? `since ${state.since ? new Date(state.since).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—"}${state.location ? ` · ${state.location}` : ""}`
+						: "Tap to clock in for your shift"}
+				</div>
+			</div>
+			<span className={state.clockedIn ? "chip chip-ok" : "chip chip-warn"}>
+				{state.clockedIn ? "ON SHIFT" : "OFF SHIFT"}
+			</span>
+		</Link>
 	);
 }
 
@@ -66,7 +93,6 @@ export default function DashboardPage() {
 
 	useEffect(() => {
 		if (!currentUser) return;
-
 		async function load() {
 			setLoading(true);
 			setError(null);
@@ -76,15 +102,14 @@ export default function DashboardPage() {
 					const data = await res.json();
 					setTasks(data.tasks || []);
 				} else {
-					setError("Failed to load tasks");
+					setError("Couldn't load tasks.");
 				}
 			} catch {
-				setError("Failed to load tasks. Check your connection and try again.");
+				setError("Couldn't load tasks. Check your connection and try again.");
 			} finally {
 				setLoading(false);
 			}
 		}
-
 		load();
 	}, [currentUser]);
 
@@ -94,151 +119,125 @@ export default function DashboardPage() {
 	}
 
 	const activeTasks = tasks.filter((t) => t.status !== "ARCHIVED");
-
-	// Workers see "My Day": only their own tasks. Admins/managers see
-	// the whole board -- this matches the nav label ("My Day" vs
-	// "Dashboard") which previously showed everyone identical
-	// company-wide numbers regardless of role.
+	// Workers see only their own tasks; admins see the whole board.
 	const scopedTasks = isAdmin ? activeTasks : activeTasks.filter(isAssignedToMe);
 
-	const totalTasks = scopedTasks.length;
+	const now = new Date();
+	const openTasks = scopedTasks.filter((t) => t.status !== "DONE" && t.status !== "CANCELLED").length;
 	const inProgressTasks = scopedTasks.filter((t) => t.status === "IN_PROGRESS").length;
 	const completedTasks = scopedTasks.filter((t) => t.status === "DONE").length;
 	const overdueTasks = scopedTasks.filter((t) => {
 		if (t.status === "DONE" || t.status === "CANCELLED" || !t.dueAt) return false;
-		return new Date(t.dueAt) < new Date();
+		return new Date(t.dueAt) < now;
 	}).length;
 
 	const upcomingDeadlines = scopedTasks
 		.filter((t) => {
 			if (t.status === "DONE" || t.status === "CANCELLED" || !t.dueAt) return false;
 			const dueDate = new Date(t.dueAt);
-			const now = new Date();
-			const sevenDaysFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
-			return dueDate >= now && dueDate <= sevenDaysFromNow;
+			const sevenDays = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+			return dueDate >= now && dueDate <= sevenDays;
 		})
 		.sort((a, b) => new Date(a.dueAt!).getTime() - new Date(b.dueAt!).getTime())
-		.slice(0, 5);
+		.slice(0, 6);
 
-	if (loading) {
-		return (
-			<div className="space-y-6">
-				<h1 className="text-2xl font-semibold">{isAdmin ? "Dashboard" : "My Day"}</h1>
-				<DashboardSkeleton />
-			</div>
-		);
-	}
+	const today = now.toLocaleDateString(undefined, {
+		weekday: "long",
+		day: "numeric",
+		month: "long",
+	});
 
-	if (error) {
-		return (
-			<div className="space-y-6">
-				<h1 className="text-2xl font-semibold">{isAdmin ? "Dashboard" : "My Day"}</h1>
-				<div className="border border-red-200 bg-red-50 text-red-700 rounded-lg p-4 flex items-center justify-between">
-					<span>{error}</span>
-					<button
-						onClick={() => window.location.reload()}
-						className="text-sm underline underline-offset-2"
-					>
-						Retry
-					</button>
-				</div>
-			</div>
-		);
-	}
+	const stats: { label: string; value: number; tone?: string }[] = [
+		{ label: isAdmin ? "Open tasks" : "My open tasks", value: openTasks },
+		{ label: "In progress", value: inProgressTasks, tone: "text-accent" },
+		{ label: "Completed", value: completedTasks, tone: "text-ok" },
+		{ label: "Overdue", value: overdueTasks, tone: overdueTasks > 0 ? "text-danger" : undefined },
+	];
 
 	return (
 		<div className="space-y-6">
-			<div className="flex items-center justify-between">
-				<h1 className="text-2xl font-semibold">{isAdmin ? "Dashboard" : "My Day"}</h1>
-				{currentUser && (
-					<span className="text-sm text-gray-500">
-						{isAdmin ? "Company-wide" : `Showing tasks assigned to you`}
-					</span>
-				)}
-			</div>
+			<PageHeader
+				title={isAdmin ? "Dashboard" : "My day"}
+				subtitle={
+					<>
+						{today} · {isAdmin ? "company-wide" : "your assignments"}
+					</>
+				}
+			/>
 
-			<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-				<div className="border rounded-lg p-4">
-					<h3 className="text-sm font-medium text-gray-600">{isAdmin ? "Total Tasks" : "My Tasks"}</h3>
-					<p className="text-2xl font-bold">{totalTasks}</p>
-				</div>
-				<div className="border rounded-lg p-4">
-					<h3 className="text-sm font-medium text-gray-600">In Progress</h3>
-					<p className="text-2xl font-bold text-blue-600">{inProgressTasks}</p>
-				</div>
-				<div className="border rounded-lg p-4">
-					<h3 className="text-sm font-medium text-gray-600">Completed</h3>
-					<p className="text-2xl font-bold text-green-600">{completedTasks}</p>
-				</div>
-				<div className="border rounded-lg p-4">
-					<h3 className="text-sm font-medium text-gray-600">Overdue</h3>
-					<p className="text-2xl font-bold text-red-600">{overdueTasks}</p>
-				</div>
-			</div>
+			{!isAdmin && <ClockCard />}
 
-			<div className="border rounded-lg p-4">
-				<h2 className="text-lg font-semibold mb-4">Upcoming Deadlines (Next 7 Days)</h2>
-				{upcomingDeadlines.length === 0 ? (
-					<p className="text-gray-500 text-sm">
-						{isAdmin
-							? "No upcoming deadlines across active tasks."
-							: "Nothing due in the next 7 days. Nice."}
-					</p>
-				) : (
-					<div className="space-y-3">
-						{upcomingDeadlines.map((task) => (
-							<Link
-								key={task.id}
-								href={`/tasks?open=${task.id}`}
-								className="block border rounded-lg p-3 hover:bg-gray-50 transition-colors"
-							>
-								<div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-									<div className="flex flex-wrap items-center gap-2 min-w-0">
-										<div
-											className={`w-2 h-2 rounded-full flex-shrink-0 ${
-												task.priority === "URGENT"
-													? "bg-red-500"
-													: task.priority === "HIGH"
-													? "bg-orange-500"
-													: task.priority === "MEDIUM"
-													? "bg-yellow-500"
-													: "bg-green-500"
-											}`}
-										></div>
-										<span className="font-medium truncate">{task.title}</span>
-										<span className="text-sm text-gray-500 flex-shrink-0">
-											{task.customerRef?.name || "No customer"}
-										</span>
-										{isAdmin && isAssignedToMe(task) && (
-											<span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded flex-shrink-0">
-												Assigned to me
-											</span>
-										)}
-									</div>
-									<div className="flex flex-col items-end gap-1 flex-shrink-0">
-										<span className="text-sm font-medium">
-											{new Date(task.dueAt!).toLocaleDateString()}
-										</span>
-										<span
-											className={`text-xs px-2 py-1 rounded ${
-												task.status === "TODO"
-													? "bg-gray-100 text-gray-800"
-													: task.status === "IN_PROGRESS"
-													? "bg-blue-100 text-blue-800"
-													: task.status === "BLOCKED"
-													? "bg-red-100 text-red-800"
-													: "bg-green-100 text-green-800"
-											}`}
-										>
-											{task.status.replace("_", " ")}
-										</span>
-									</div>
+			{loading ? (
+				<DashboardSkeleton />
+			) : error ? (
+				<div className="alert alert-danger">
+					<span>{error}</span>
+					<button onClick={() => window.location.reload()} className="underline underline-offset-2 font-medium shrink-0">
+						Retry
+					</button>
+				</div>
+			) : (
+				<>
+					<div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+						{stats.map((s) => (
+							<Link key={s.label} href="/tasks" className="card card-pad hover:shadow-md transition-shadow">
+								<div className="meta">{s.label.toUpperCase()}</div>
+								<div className={`text-3xl font-semibold mt-1 font-mono tabular-nums ${s.tone ?? ""}`}>
+									{s.value}
 								</div>
 							</Link>
 						))}
 					</div>
-				)}
-			</div>
+
+					<section>
+						<div className="flex items-baseline justify-between mb-3">
+							<h2 className="text-lg font-semibold tracking-tight">Due in the next 7 days</h2>
+							<Link href="/tasks" className="text-sm text-accent font-medium hover:text-accent-strong">
+								All tasks →
+							</Link>
+						</div>
+
+						{upcomingDeadlines.length === 0 ? (
+							<EmptyState
+								title="Nothing due this week"
+								hint={isAdmin ? "No upcoming deadlines across active tasks." : "You have no deadlines in the next 7 days."}
+							/>
+						) : (
+							<div className="space-y-2.5">
+								{upcomingDeadlines.map((task) => {
+									const st = statusChip(task.status);
+									const pr = priorityChip(task.priority);
+									return (
+										<Link
+											key={task.id}
+											href={`/tasks?open=${task.id}`}
+											className="ticket block p-3.5 hover:shadow-md transition-shadow"
+											style={ticketColor(task.status)}
+										>
+											<div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+												<div className="flex flex-wrap items-center gap-2 min-w-0">
+													<span className="font-medium truncate">{task.title}</span>
+													<span className={pr.cls}>{pr.label}</span>
+													{isAdmin && isAssignedToMe(task) && (
+														<span className="chip chip-info chip-plain">ME</span>
+													)}
+												</div>
+												<div className="flex items-center gap-2.5 shrink-0">
+													<span className="meta">
+														{task.customerRef?.name ? `${task.customerRef.name} · ` : ""}
+														due {new Date(task.dueAt!).toLocaleDateString(undefined, { day: "2-digit", month: "short" })}
+													</span>
+													<span className={st.cls}>{st.label}</span>
+												</div>
+											</div>
+										</Link>
+									);
+								})}
+							</div>
+						)}
+					</section>
+				</>
+			)}
 		</div>
 	);
 }

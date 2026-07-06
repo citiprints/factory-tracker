@@ -151,7 +151,7 @@ export default function ArchivePage() {
 	return (
 		<div className="space-y-6">
 			<div className="flex items-center justify-between">
-				<h1 className="text-2xl font-semibold">Archived Tasks</h1>
+				<h1 className="text-2xl font-semibold tracking-tight">Archive</h1>
 				<div className="text-sm text-gray-600">
 					{tasks.length} archived task{tasks.length !== 1 ? 's' : ''}
 				</div>
@@ -235,8 +235,8 @@ export default function ArchivePage() {
 				if (!task) return null;
 				
 				return (
-					<div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-						<div className="bg-white rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+					<div className="fixed inset-0 bg-black/55 backdrop-blur-[2px] flex items-center justify-center z-50 p-3">
+						<div className="card card-pad max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto !bg-[var(--raised)] shadow-lg">
 							<div className="flex flex-wrap items-center justify-between gap-2 mb-4">
 								<h2 className="text-xl font-semibold">Archived Task Details</h2>
 								<button
@@ -254,21 +254,21 @@ export default function ArchivePage() {
 									<h3 className="font-medium text-gray-900 mb-2">Basic Information</h3>
 									<div className="grid grid-cols-2 gap-4">
 										<div>
-											<label className="block text-sm font-medium text-gray-700">Title</label>
+											<label className="field-label">Title</label>
 											<p className="text-sm text-gray-900">{task.title}</p>
 										</div>
 										<div>
-											<label className="block text-sm font-medium text-gray-700">Status</label>
+											<label className="field-label">Status</label>
 											<span className="inline-block px-2 py-1 text-xs rounded bg-gray-600 text-white">
 												{task.status}
 											</span>
 										</div>
 										<div>
-											<label className="block text-sm font-medium text-gray-700">Description</label>
+											<label className="field-label">Description</label>
 											<p className="text-sm text-gray-900">{task.description || "No description"}</p>
 										</div>
 										<div>
-											<label className="block text-sm font-medium text-gray-700">Created</label>
+											<label className="field-label">Created</label>
 											<p className="text-sm text-gray-900">{new Date(task.createdAt).toLocaleString()}</p>
 										</div>
 									</div>
@@ -281,13 +281,13 @@ export default function ArchivePage() {
 										<div className="grid grid-cols-2 gap-4">
 											{task.startAt && (
 												<div>
-													<label className="block text-sm font-medium text-gray-700">Start Date</label>
+													<label className="field-label">Start Date</label>
 													<p className="text-sm text-gray-900">{new Date(task.startAt).toLocaleString()}</p>
 												</div>
 											)}
 											{task.dueAt && (
 												<div>
-													<label className="block text-sm font-medium text-gray-700">Due Date</label>
+													<label className="field-label">Due Date</label>
 													<p className="text-sm text-gray-900">{new Date(task.dueAt).toLocaleString()}</p>
 												</div>
 											)}
@@ -302,13 +302,13 @@ export default function ArchivePage() {
 										<div className="space-y-2">
 											{task.customerRef && (
 												<div>
-													<label className="block text-sm font-medium text-gray-700">Customer</label>
+													<label className="field-label">Customer</label>
 													<p className="text-sm text-gray-900">{task.customerRef.name}</p>
 												</div>
 											)}
 											{task.assignments && task.assignments.length > 0 && (
 												<div>
-													<label className="block text-sm font-medium text-gray-700">Assigned To</label>
+													<label className="field-label">Assigned To</label>
 													<div className="flex flex-wrap gap-1 mt-1">
 														{task.assignments.map(a => (
 															<span key={a.id} className="text-xs px-2 py-1 rounded bg-gray-200 text-gray-800">
@@ -329,31 +329,31 @@ export default function ArchivePage() {
 										<div className="space-y-2">
 											{task.customFields.quantity && (
 												<div>
-													<label className="block text-sm font-medium text-gray-700">Quantity</label>
+													<label className="field-label">Quantity</label>
 													<p className="text-sm text-gray-900">{task.customFields.quantity}</p>
 												</div>
 											)}
 											{task.customFields.category && (
 												<div>
-													<label className="block text-sm font-medium text-gray-700">Category</label>
+													<label className="field-label">Category</label>
 													<p className="text-sm text-gray-900">{task.customFields.category}</p>
 												</div>
 											)}
 											
 											{/* Rigid Box specific fields */}
 											{task.customFields.category === "Rigid Boxes" && (
-												<div className="border border-gray-200 rounded p-3 bg-gray-50">
+												<div className="border border-line rounded-lg p-3 bg-wash">
 													<h4 className="font-medium text-sm mb-2">Rigid Box Specifications</h4>
 													<div className="grid grid-cols-2 gap-3 text-sm">
 														{task.customFields.boxType && (
 															<div>
-																<label className="block text-xs font-medium text-gray-600">Box Type</label>
+																<label className="field-label">Box Type</label>
 																<p className="text-gray-900">{task.customFields.boxType}</p>
 															</div>
 														)}
 														{task.customFields.size && (
 															<div>
-																<label className="block text-xs font-medium text-gray-600">Size</label>
+																<label className="field-label">Size</label>
 																<p className="text-gray-900">
 																	{task.customFields.size}
 																	{task.customFields.existingSize && " (Existing size)"}
@@ -362,31 +362,31 @@ export default function ArchivePage() {
 														)}
 														{task.customFields.topOuter && (
 															<div>
-																<label className="block text-xs font-medium text-gray-600">Top Outer</label>
+																<label className="field-label">Top Outer</label>
 																<p className="text-gray-900">{task.customFields.topOuter}</p>
 															</div>
 														)}
 														{task.customFields.topInner && (
 															<div>
-																<label className="block text-xs font-medium text-gray-600">Top Inner</label>
+																<label className="field-label">Top Inner</label>
 																<p className="text-gray-900">{task.customFields.topInner}</p>
 															</div>
 														)}
 														{task.customFields.bottomOuter && (
 															<div>
-																<label className="block text-xs font-medium text-gray-600">Bottom Outer</label>
+																<label className="field-label">Bottom Outer</label>
 																<p className="text-gray-900">{task.customFields.bottomOuter}</p>
 															</div>
 														)}
 														{task.customFields.bottomInner && (
 															<div>
-																<label className="block text-xs font-medium text-gray-600">Bottom Inner</label>
+																<label className="field-label">Bottom Inner</label>
 																<p className="text-gray-900">{task.customFields.bottomInner}</p>
 															</div>
 														)}
 														{task.customFields.hasPartition && (
 															<div className="col-span-2">
-																<label className="block text-xs font-medium text-gray-600">Partition</label>
+																<label className="field-label">Partition</label>
 																<p className="text-gray-900">
 																	Yes
 																	{task.customFields.partitionDescription && ` - ${task.customFields.partitionDescription}`}

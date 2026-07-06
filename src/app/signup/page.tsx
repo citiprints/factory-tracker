@@ -23,81 +23,70 @@ export default function SignUpPage() {
     setLoading(false);
     if (!res.ok) {
       const json = await res.json().catch(() => ({}));
-      setError(json.error ?? "Failed to sign up");
+      setError(json.error ?? "Couldn't create the account. Try again.");
       return;
     }
     router.push("/signin?registered=1");
   }
 
   return (
-    <div className="min-h-[70vh] flex items-center justify-center px-4">
-      <div className="w-full max-w-sm border rounded-2xl p-6 bg-background">
-        <h1 className="text-xl font-semibold mb-1">Create account</h1>
-        <p className="text-sm text-gray-500 mb-5">Factory Tracker</p>
+    <div className="min-h-[78vh] flex items-center justify-center px-4">
+      <div className="w-full max-w-sm">
+        <div className="card card-pad">
+          <h1 className="text-xl font-semibold tracking-tight">Create account</h1>
+          <p className="meta mt-1 mb-6">WRAPZONE · CITIPRINTS</p>
 
-        <form onSubmit={onSubmit} className="space-y-4" noValidate>
-          <div>
-            <label htmlFor="name" className="block text-sm font-medium mb-1">
-              Name
-            </label>
-            <input
-              id="name"
-              className="w-full border rounded-lg px-3 py-2 bg-background"
-              type="text"
-              autoComplete="name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              required
-            />
-          </div>
-          <div>
-            <label htmlFor="email" className="block text-sm font-medium mb-1">
-              Email
-            </label>
-            <input
-              id="email"
-              className="w-full border rounded-lg px-3 py-2 bg-background"
-              type="email"
-              autoComplete="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-            />
-          </div>
-          <div>
-            <label htmlFor="password" className="block text-sm font-medium mb-1">
-              Password
-            </label>
-            <input
-              id="password"
-              className="w-full border rounded-lg px-3 py-2 bg-background"
-              type="password"
-              autoComplete="new-password"
-              minLength={8}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-            />
-            <p className="text-xs text-gray-500 mt-1">At least 8 characters.</p>
-          </div>
-
-          {error && (
-            <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-              {error}
+          <form onSubmit={onSubmit} className="space-y-4" noValidate>
+            <div>
+              <label htmlFor="name" className="field-label">Name</label>
+              <input
+                id="name"
+                className="input"
+                type="text"
+                autoComplete="name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                required
+              />
             </div>
-          )}
+            <div>
+              <label htmlFor="email" className="field-label">Email</label>
+              <input
+                id="email"
+                className="input"
+                type="email"
+                autoComplete="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+              />
+            </div>
+            <div>
+              <label htmlFor="password" className="field-label">Password</label>
+              <input
+                id="password"
+                className="input"
+                type="password"
+                autoComplete="new-password"
+                minLength={8}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+              />
+              <p className="text-xs text-faint mt-1">At least 8 characters.</p>
+            </div>
 
-          <button
-            disabled={loading}
-            className="w-full rounded-lg bg-gray-900 px-3 py-2.5 text-white font-medium disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-800 transition-colors"
-          >
-            {loading ? "Creating account..." : "Create account"}
-          </button>
-        </form>
+            {error && <div className="alert alert-danger">{error}</div>}
 
-        <p className="text-sm text-gray-500 mt-5 text-center">
+            <button disabled={loading} className="btn btn-primary btn-block">
+              {loading ? "Creating account…" : "Create account"}
+            </button>
+          </form>
+        </div>
+
+        <p className="text-sm text-muted mt-5 text-center">
           Already have an account?{" "}
-          <Link href="/signin" className="text-gray-900 font-medium underline underline-offset-2">
+          <Link href="/signin" className="text-accent font-medium hover:text-accent-strong">
             Sign in
           </Link>
         </p>

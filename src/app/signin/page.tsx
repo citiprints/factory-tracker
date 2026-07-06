@@ -22,75 +22,62 @@ function SignInForm() {
     });
     if (!res.ok) {
       const json = await res.json().catch(() => ({}));
-      setError(json.error ?? "Failed to sign in");
+      setError(json.error ?? "Couldn't sign you in. Check your email and password.");
       setLoading(false);
       return;
     }
-    // Full navigation so the server resolves the fresh session cookie
-    // via getCurrentUser() — no intermediate "verifying..." page needed.
-    // (loading stays true through the redirect, no flash of an idle form)
+    // Full navigation so the server resolves the fresh session cookie.
     window.location.href = "/dashboard";
   }
 
   return (
-    <div className="min-h-[70vh] flex items-center justify-center px-4">
-      <div className="w-full max-w-sm border rounded-2xl p-6 bg-background">
-        <h1 className="text-xl font-semibold mb-1">Sign in</h1>
-        <p className="text-sm text-gray-500 mb-5">Factory Tracker</p>
+    <div className="min-h-[78vh] flex items-center justify-center px-4">
+      <div className="w-full max-w-sm">
+        <div className="card card-pad">
+          <h1 className="text-xl font-semibold tracking-tight">Sign in</h1>
+          <p className="meta mt-1 mb-6">WRAPZONE · CITIPRINTS</p>
 
-        {justRegistered && (
-          <div className="mb-4 text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2">
-            Account created — sign in below.
-          </div>
-        )}
-
-        <form onSubmit={onSubmit} className="space-y-4" noValidate>
-          <div>
-            <label htmlFor="email" className="block text-sm font-medium mb-1">
-              Email
-            </label>
-            <input
-              id="email"
-              className="w-full border rounded-lg px-3 py-2 bg-background"
-              type="email"
-              autoComplete="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-            />
-          </div>
-          <div>
-            <label htmlFor="password" className="block text-sm font-medium mb-1">
-              Password
-            </label>
-            <input
-              id="password"
-              className="w-full border rounded-lg px-3 py-2 bg-background"
-              type="password"
-              autoComplete="current-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-            />
-          </div>
-
-          {error && (
-            <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-              {error}
-            </div>
+          {justRegistered && (
+            <div className="alert alert-ok mb-4">Account created — sign in below.</div>
           )}
 
-          <button
-            disabled={loading}
-            className="w-full rounded-lg bg-gray-900 px-3 py-2.5 text-white font-medium disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-800 transition-colors"
-          >
-            {loading ? "Signing in..." : "Sign in"}
-          </button>
-        </form>
+          <form onSubmit={onSubmit} className="space-y-4" noValidate>
+            <div>
+              <label htmlFor="email" className="field-label">Email</label>
+              <input
+                id="email"
+                className="input"
+                type="email"
+                autoComplete="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+              />
+            </div>
+            <div>
+              <label htmlFor="password" className="field-label">Password</label>
+              <input
+                id="password"
+                className="input"
+                type="password"
+                autoComplete="current-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+              />
+            </div>
 
-        <p className="text-sm text-gray-500 mt-5 text-center">
+            {error && <div className="alert alert-danger">{error}</div>}
+
+            <button disabled={loading} className="btn btn-primary btn-block">
+              {loading ? "Signing in…" : "Sign in"}
+            </button>
+          </form>
+        </div>
+
+        <p className="text-sm text-muted mt-5 text-center">
           New here?{" "}
-          <Link href="/signup" className="text-gray-900 font-medium underline underline-offset-2">
+          <Link href="/signup" className="text-accent font-medium hover:text-accent-strong">
             Create an account
           </Link>
         </p>

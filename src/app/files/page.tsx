@@ -135,8 +135,8 @@ export default function FilesPage() {
 
 	if (loading) {
 		return (
-			<div className="container mx-auto px-4 py-8">
-				<h1 className="text-2xl font-bold mb-6">File Uploads</h1>
+			<div className="">
+				<h1 className="text-2xl font-semibold tracking-tight mb-6">Files</h1>
 				<div className="space-y-4">
 					{Array.from({ length: 5 }).map((_, i) => (
 						<div key={i} className="animate-pulse">
@@ -149,22 +149,22 @@ export default function FilesPage() {
 	}
 
 	return (
-		<div className="container mx-auto px-4 py-8">
+		<div className="">
 			<div className="flex justify-between items-center mb-6">
-				<h1 className="text-2xl font-bold">File Uploads</h1>
+				<h1 className="text-2xl font-semibold tracking-tight">Files</h1>
 				<div className="flex gap-2">
 					{selectedFiles.size > 0 && (
 						<button
 							onClick={bulkDeleteFiles}
 							disabled={bulkDeleting}
-							className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50"
+							className="btn btn-danger"
 						>
 							{bulkDeleting ? "Deleting..." : `Delete ${selectedFiles.size} File${selectedFiles.size > 1 ? 's' : ''}`}
 						</button>
 					)}
 					<button
 						onClick={loadFiles}
-						className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700"
+						className="btn btn-outline"
 					>
 						Refresh
 					</button>

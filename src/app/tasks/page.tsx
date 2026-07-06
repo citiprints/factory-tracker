@@ -337,25 +337,25 @@ function TasksPageInner() {
 
 	function getGroupColorClasses(key: string): { bar: string; bg: string; dot: string } {
 		const palette = [
-			{ bar: "border-blue-500", bg: "bg-blue-50", dot: "bg-blue-500" },
-			{ bar: "border-green-500", bg: "bg-green-50", dot: "bg-green-500" },
-			{ bar: "border-amber-500", bg: "bg-amber-50", dot: "bg-amber-500" },
-			{ bar: "border-purple-500", bg: "bg-purple-50", dot: "bg-purple-500" },
-			{ bar: "border-pink-500", bg: "bg-pink-50", dot: "bg-pink-500" },
-			{ bar: "border-teal-500", bg: "bg-teal-50", dot: "bg-teal-500" },
-			{ bar: "border-indigo-500", bg: "bg-indigo-50", dot: "bg-indigo-500" },
-			{ bar: "border-rose-500", bg: "bg-rose-50", dot: "bg-rose-500" },
-			{ bar: "border-cyan-500", bg: "bg-cyan-50", dot: "bg-cyan-500" },
-			{ bar: "border-lime-500", bg: "bg-lime-50", dot: "bg-lime-500" },
-			{ bar: "border-sky-500", bg: "bg-sky-50", dot: "bg-sky-500" },
-			{ bar: "border-violet-500", bg: "bg-violet-50", dot: "bg-violet-500" },
-			{ bar: "border-fuchsia-500", bg: "bg-fuchsia-50", dot: "bg-fuchsia-500" },
-			{ bar: "border-emerald-500", bg: "bg-emerald-50", dot: "bg-emerald-500" },
-			{ bar: "border-orange-500", bg: "bg-orange-50", dot: "bg-orange-500" },
-			{ bar: "border-yellow-500", bg: "bg-yellow-50", dot: "bg-yellow-500" },
-			{ bar: "border-stone-500", bg: "bg-stone-50", dot: "bg-stone-500" },
-			{ bar: "border-slate-500", bg: "bg-slate-50", dot: "bg-slate-500" },
-			{ bar: "border-zinc-500", bg: "bg-zinc-50", dot: "bg-zinc-500" },
+			{ bar: "border-blue-500", bg: "", dot: "bg-blue-500" },
+			{ bar: "border-green-500", bg: "", dot: "bg-green-500" },
+			{ bar: "border-amber-500", bg: "", dot: "bg-amber-500" },
+			{ bar: "border-purple-500", bg: "", dot: "bg-purple-500" },
+			{ bar: "border-pink-500", bg: "", dot: "bg-pink-500" },
+			{ bar: "border-teal-500", bg: "", dot: "bg-teal-500" },
+			{ bar: "border-indigo-500", bg: "", dot: "bg-indigo-500" },
+			{ bar: "border-rose-500", bg: "", dot: "bg-rose-500" },
+			{ bar: "border-cyan-500", bg: "", dot: "bg-cyan-500" },
+			{ bar: "border-lime-500", bg: "", dot: "bg-lime-500" },
+			{ bar: "border-sky-500", bg: "", dot: "bg-sky-500" },
+			{ bar: "border-violet-500", bg: "", dot: "bg-violet-500" },
+			{ bar: "border-fuchsia-500", bg: "", dot: "bg-fuchsia-500" },
+			{ bar: "border-emerald-500", bg: "", dot: "bg-emerald-500" },
+			{ bar: "border-orange-500", bg: "", dot: "bg-orange-500" },
+			{ bar: "border-yellow-500", bg: "", dot: "bg-yellow-500" },
+			{ bar: "border-stone-500", bg: "", dot: "bg-stone-500" },
+			{ bar: "border-slate-500", bg: "", dot: "bg-slate-500" },
+			{ bar: "border-zinc-500", bg: "", dot: "bg-zinc-500" },
 		];
 		let hash = 0;
 		for (let i = 0; i < key.length; i++) hash = (hash * 31 + key.charCodeAt(i)) >>> 0;
@@ -639,14 +639,14 @@ function TasksPageInner() {
 							{dayButtons}
 						</div>
 						<div className="flex items-center gap-2">
-							<select className="border rounded px-2 py-1 text-sm" value={hour} onChange={e => updateTime(`${e.target.value || "00"}:${minute || "00"}`)}>
+							<select className="input w-auto inline-block text-sm !min-h-8 !py-1" value={hour} onChange={e => updateTime(`${e.target.value || "00"}:${minute || "00"}`)}>
 								<option value="">HH</option>
 								{Array.from({length:24}).map((_,h) => {
 									const hv = `${h}`.padStart(2, "0");
 									return <option key={hv} value={hv}>{hv}</option>;
 								})}
 							</select>
-							<select className="border rounded px-2 py-1 text-sm" value={minute} onChange={e => updateTime(`${hour || "00"}:${e.target.value}`)}>
+							<select className="input w-auto inline-block text-sm !min-h-8 !py-1" value={minute} onChange={e => updateTime(`${hour || "00"}:${e.target.value}`)}>
 								<option value="">MM</option>
 								{minuteOptions.map(m => <option key={m} value={m}>{m}</option>)}
 							</select>
@@ -734,17 +734,24 @@ function TasksPageInner() {
 	}
 
 	return (
-		<div className="grid gap-6 sm:grid-cols-2">
-			<section className="relative">
+		<div className="space-y-6">
+			<div>
+				<h1 className="text-2xl font-semibold tracking-tight">Tasks</h1>
+				<p className="text-sm text-muted mt-0.5">Jobs, subtasks, and assignments</p>
+			</div>
+			<details className="card relative">
 				{editingId && (
-					<div className="absolute inset-0 bg-gray-200 bg-opacity-75 z-10 flex items-center justify-center">
-						<div className="bg-white rounded-lg p-4 shadow-lg">
-							<p className="text-gray-600 font-medium">Editing task...</p>
+					<div className="absolute inset-0 bg-black/40 z-10 flex items-center justify-center rounded-[0.85rem]">
+						<div className="card card-pad shadow-lg">
+							<p className="font-medium">Editing task…</p>
 						</div>
 					</div>
 				)}
-				<h1 className="text-xl font-semibold mb-3">Create task</h1>
-				
+				<summary className="list-none cursor-pointer select-none card-pad flex items-center justify-between gap-2 font-semibold [&::-webkit-details-marker]:hidden">
+					<span>+ Create task</span>
+					<span className="meta">TAP TO EXPAND</span>
+				</summary>
+				<div className="card-pad pt-0">
 				{/* Quotation checkbox */}
 				<label className="flex items-center gap-2 mb-3">
 					<input
@@ -756,10 +763,10 @@ function TasksPageInner() {
 				</label>
 				
 				<form onSubmit={onCreate} className="space-y-3">
-					<input className="w-full border rounded px-3 py-2" placeholder="Title" value={title} onChange={e => setTitle(e.target.value)} required />
-					<textarea className="w-full border rounded px-3 py-2" placeholder="Description" value={desc} onChange={e => setDesc(e.target.value)} />
+					<input className="input" placeholder="Title" value={title} onChange={e => setTitle(e.target.value)} required />
+					<textarea className="input" placeholder="Description" value={desc} onChange={e => setDesc(e.target.value)} />
 					{showNewCustomerForm ? (
-						<div className="space-y-3 p-3 border border-gray-200 rounded bg-gray-50">
+						<div className="space-y-3 p-3 border border-line rounded-lg bg-wash">
 							<div className="flex items-center justify-between">
 								<h3 className="font-medium text-sm">Add New Customer</h3>
 								<button
@@ -780,7 +787,7 @@ function TasksPageInner() {
 							</div>
 							<input
 								type="text"
-								className="w-full border rounded px-3 py-2"
+								className="input"
 								placeholder="Customer name *"
 								value={newCustomerName}
 								onChange={e => setNewCustomerName(e.target.value)}
@@ -788,43 +795,43 @@ function TasksPageInner() {
 							/>
 							<input
 								type="email"
-								className="w-full border rounded px-3 py-2"
+								className="input"
 								placeholder="Email (optional)"
 								value={newCustomerEmail}
 								onChange={e => setNewCustomerEmail(e.target.value)}
 							/>
 							<input
 								type="tel"
-								className="w-full border rounded px-3 py-2"
+								className="input"
 								placeholder="Phone (optional)"
 								value={newCustomerPhone}
 								onChange={e => setNewCustomerPhone(e.target.value)}
 							/>
 							<input
 								type="text"
-								className="w-full border rounded px-3 py-2"
+								className="input"
 								placeholder="Company (optional)"
 								value={newCustomerCompany}
 								onChange={e => setNewCustomerCompany(e.target.value)}
 							/>
 							<textarea
-								className="w-full border rounded px-3 py-2"
+								className="input"
 								placeholder="Address (optional)"
 								value={newCustomerAddress}
 								onChange={e => setNewCustomerAddress(e.target.value)}
 								rows={3}
 							/>
-							{error && <p className="text-sm text-red-600">{error}</p>}
+							{error && <p className="text-sm text-danger">{error}</p>}
 							<button
 								type="button"
 								onClick={createNewCustomer}
-								className="w-full bg-blue-600 text-white py-2 px-3 rounded hover:bg-blue-700"
+								className="btn btn-accent btn-block"
 							>
 								Create Customer
 							</button>
 						</div>
 					) : (
-						<select className="w-full border rounded px-3 py-2" value={customerId} onChange={e => {
+						<select className="input" value={customerId} onChange={e => {
 							if (e.target.value === "add-new") {
 								setShowNewCustomerForm(true);
 								setCustomerId("");
@@ -839,7 +846,7 @@ function TasksPageInner() {
 							<option value="add-new">➕ Add New Customer</option>
 						</select>
 					)}
-					<select className="w-full border rounded px-3 py-2" value={assigneeId} onChange={e => setAssigneeId(e.target.value)}>
+					<select className="input" value={assigneeId} onChange={e => setAssigneeId(e.target.value)}>
 						<option value="">Assign to user (optional)</option>
 						{users.map(u => (
 							<option key={u.id} value={u.id}>{u.name}</option>
@@ -847,7 +854,7 @@ function TasksPageInner() {
 					</select>
 					
 					<select
-						className="w-full border rounded px-3 py-2"
+						className="input"
 						value={custom["category"] ?? ""}
 						onChange={e => setCustom({ ...custom, category: e.target.value })}
 					>
@@ -863,7 +870,7 @@ function TasksPageInner() {
 					{/* Quantity field */}
 					<input 
 						type="number" 
-						className="w-full border rounded px-3 py-2" 
+						className="input" 
 						placeholder="Quantity" 
 						value={custom["quantity"] ?? ""} 
 						onChange={e => setCustom({ ...custom, quantity: e.target.valueAsNumber || "" })} 
@@ -871,12 +878,12 @@ function TasksPageInner() {
 
 					{/* Rigid Box specific fields */}
 					{custom["category"] === "Rigid Boxes" && (
-						<div className="space-y-3 p-3 border border-gray-200 rounded bg-gray-50">
+						<div className="space-y-3 p-3 border border-line rounded-lg bg-wash">
 							<h3 className="font-medium text-sm">Rigid Box Specifications</h3>
 							
 							{/* Box Type - Radio buttons */}
 							<div>
-								<label className="block text-sm font-medium mb-2">Box Type</label>
+								<label className="field-label">Box Type</label>
 								<div className="space-y-2">
 									{["Lid & Base", "Magnetic", "Ribbon", "Book", "Custom"].map(type => (
 										<label key={type} className="flex items-center gap-2">
@@ -895,11 +902,11 @@ function TasksPageInner() {
 
 							{/* Size */}
 							<div>
-								<label className="block text-sm font-medium mb-2">Size</label>
+								<label className="field-label">Size</label>
 								<div className="flex items-center gap-2">
 									<input
 										type="text"
-										className="flex-1 border rounded px-3 py-2"
+										className="input flex-1 w-auto"
 										placeholder="Enter size"
 										value={custom["size"] ?? ""}
 										onChange={e => setCustom({ ...custom, size: e.target.value })}
@@ -918,7 +925,7 @@ function TasksPageInner() {
 							{/* Top Outer */}
 							<input
 								type="text"
-								className="w-full border rounded px-3 py-2"
+								className="input"
 								placeholder="Top Outer"
 								value={custom["topOuter"] ?? ""}
 								onChange={e => setCustom({ ...custom, topOuter: e.target.value })}
@@ -927,7 +934,7 @@ function TasksPageInner() {
 							{/* Top Inner */}
 							<input
 								type="text"
-								className="w-full border rounded px-3 py-2"
+								className="input"
 								placeholder="Top Inner"
 								value={custom["topInner"] ?? ""}
 								onChange={e => setCustom({ ...custom, topInner: e.target.value })}
@@ -936,7 +943,7 @@ function TasksPageInner() {
 							{/* Bottom Outer */}
 							<input
 								type="text"
-								className="w-full border rounded px-3 py-2"
+								className="input"
 								placeholder="Bottom Outer"
 								value={custom["bottomOuter"] ?? ""}
 								onChange={e => setCustom({ ...custom, bottomOuter: e.target.value })}
@@ -945,7 +952,7 @@ function TasksPageInner() {
 							{/* Bottom Inner */}
 							<input
 								type="text"
-								className="w-full border rounded px-3 py-2"
+								className="input"
 								placeholder="Bottom Inner"
 								value={custom["bottomInner"] ?? ""}
 								onChange={e => setCustom({ ...custom, bottomInner: e.target.value })}
@@ -963,7 +970,7 @@ function TasksPageInner() {
 								</label>
 								{custom["hasPartition"] && (
 									<textarea
-										className="w-full border rounded px-3 py-2 mt-2"
+										className="input mt-2"
 										placeholder="Partition description"
 										value={custom["partitionDescription"] ?? ""}
 										onChange={e => setCustom({ ...custom, partitionDescription: e.target.value })}
@@ -974,14 +981,14 @@ function TasksPageInner() {
 					)}
 
 					{custom["category"] === "Cake Boxes" && (
-						<div className="space-y-3 p-3 border border-gray-200 rounded bg-gray-50">
+						<div className="space-y-3 p-3 border border-line rounded-lg bg-wash">
 							<h3 className="font-medium text-sm">Cake Box Specifications</h3>
 							<div>
-								<label className="block text-sm font-medium mb-2">Size</label>
+								<label className="field-label">Size</label>
 								<div className="flex items-center gap-2">
 									<input
 										type="text"
-										className="flex-1 border rounded px-3 py-2"
+										className="input flex-1 w-auto"
 										placeholder="Enter size"
 										value={custom["size"] ?? ""}
 										onChange={e => setCustom({ ...custom, size: e.target.value })}
@@ -1008,7 +1015,7 @@ function TasksPageInner() {
 								{custom["hasWindow"] && (
 									<input
 										type="text"
-										className="w-full border rounded px-3 py-2 mt-2"
+										className="input mt-2"
 										placeholder="Window details"
 										value={custom["windowDetails"] ?? ""}
 										onChange={e => setCustom({ ...custom, windowDetails: e.target.value })}
@@ -1027,7 +1034,7 @@ function TasksPageInner() {
 								{custom["innerPrinting"] && (
 									<input
 										type="text"
-										className="w-full border rounded px-3 py-2 mt-2"
+										className="input mt-2"
 										placeholder="Inner printing details"
 										value={custom["innerPrintingDetails"] ?? ""}
 										onChange={e => setCustom({ ...custom, innerPrintingDetails: e.target.value })}
@@ -1038,14 +1045,14 @@ function TasksPageInner() {
 					)}
 
 					{custom["category"] === "Paper Bags" && (
-						<div className="space-y-3 p-3 border border-gray-200 rounded bg-gray-50">
+						<div className="space-y-3 p-3 border border-line rounded-lg bg-wash">
 							<h3 className="font-medium text-sm">Paper Bag Specifications</h3>
 							<div>
-								<label className="block text-sm font-medium mb-2">Size</label>
+								<label className="field-label">Size</label>
 								<div className="flex items-center gap-2">
 									<input
 										type="text"
-										className="flex-1 border rounded px-3 py-2"
+										className="input flex-1 w-auto"
 										placeholder="Enter size"
 										value={custom["size"] ?? ""}
 										onChange={e => setCustom({ ...custom, size: e.target.value })}
@@ -1072,7 +1079,7 @@ function TasksPageInner() {
 								{custom["innerPrinting"] && (
 									<input
 										type="text"
-										className="w-full border rounded px-3 py-2 mt-2"
+										className="input mt-2"
 										placeholder="Inner printing details"
 										value={custom["innerPrintingDetails"] ?? ""}
 										onChange={e => setCustom({ ...custom, innerPrintingDetails: e.target.value })}
@@ -1081,7 +1088,7 @@ function TasksPageInner() {
 							</div>
 							<input
 								type="text"
-								className="w-full border rounded px-3 py-2"
+								className="input"
 								placeholder="Rope details"
 								value={custom["rope"] ?? ""}
 								onChange={e => setCustom({ ...custom, rope: e.target.value })}
@@ -1090,20 +1097,20 @@ function TasksPageInner() {
 					)}
 
 					{custom["category"] === "Stickers" && (
-						<div className="space-y-3 p-3 border border-gray-200 rounded bg-gray-50">
+						<div className="space-y-3 p-3 border border-line rounded-lg bg-wash">
 							<h3 className="font-medium text-sm">Sticker Specifications</h3>
 							<input
 								type="text"
-								className="w-full border rounded px-3 py-2"
+								className="input"
 								placeholder="Size"
 								value={custom["size"] ?? ""}
 								onChange={e => setCustom({ ...custom, size: e.target.value })}
 							/>
 							<div className="grid grid-cols-2 gap-3">
 								<div>
-									<label className="block text-sm font-medium mb-1">Shape</label>
+									<label className="field-label">Shape</label>
 									<select
-										className="w-full border rounded px-3 py-2"
+										className="input"
 										value={custom["shape"] ?? "Rectangle"}
 										onChange={e => setCustom({ ...custom, shape: e.target.value })}
 									>
@@ -1113,9 +1120,9 @@ function TasksPageInner() {
 									</select>
 								</div>
 								<div>
-									<label className="block text-sm font-medium mb-1">Material</label>
+									<label className="field-label">Material</label>
 									<select
-										className="w-full border rounded px-3 py-2"
+										className="input"
 										value={custom["material"] ?? "Artsticker"}
 										onChange={e => setCustom({ ...custom, material: e.target.value })}
 									>
@@ -1130,17 +1137,17 @@ function TasksPageInner() {
 					)}
 
 					{custom["category"] === "Cards" && (
-						<div className="space-y-3 p-3 border border-gray-200 rounded bg-gray-50">
+						<div className="space-y-3 p-3 border border-line rounded-lg bg-wash">
 							<h3 className="font-medium text-sm">Card Specifications</h3>
 							<input
 								type="text"
-								className="w-full border rounded px-3 py-2"
+								className="input"
 								placeholder="Size"
 								value={custom["size"] ?? ""}
 								onChange={e => setCustom({ ...custom, size: e.target.value })}
 							/>
 							<div>
-								<label className="block text-sm font-medium mb-1">Sides</label>
+								<label className="field-label">Sides</label>
 								<div className="flex items-center gap-4">
 									<label className="flex items-center gap-2 text-sm">
 										<input
@@ -1166,7 +1173,7 @@ function TasksPageInner() {
 							</div>
 							<input
 								type="text"
-								className="w-full border rounded px-3 py-2"
+								className="input"
 								placeholder="Material"
 								value={custom["material"] ?? ""}
 								onChange={e => setCustom({ ...custom, material: e.target.value })}
@@ -1175,20 +1182,20 @@ function TasksPageInner() {
 					)}
 
 					{custom["category"] === "Invitation" && (
-						<div className="space-y-3 p-3 border border-gray-200 rounded bg-gray-50">
+						<div className="space-y-3 p-3 border border-line rounded-lg bg-wash">
 							<h3 className="font-medium text-sm">Invitation Specifications</h3>
 							<div>
-								<label className="block text-sm font-medium mb-2">Size</label>
+								<label className="field-label">Size</label>
 								<div className="flex items-center gap-2">
-									<input type="text" className="flex-1 border rounded px-3 py-2" placeholder="Enter size" value={custom["size"] ?? ""} onChange={e => setCustom({ ...custom, size: e.target.value })} />
+									<input type="text" className="input flex-1 w-auto" placeholder="Enter size" value={custom["size"] ?? ""} onChange={e => setCustom({ ...custom, size: e.target.value })} />
 									<label className="flex items-center gap-2 text-sm">
 										<input type="checkbox" checked={custom["existingSize"] ?? false} onChange={e => setCustom({ ...custom, existingSize: e.target.checked })} />
 										Existing size
 									</label>
 								</div>
 							</div>
-							<input type="text" className="w-full border rounded px-3 py-2" placeholder="Material" value={custom["material"] ?? ""} onChange={e => setCustom({ ...custom, material: e.target.value })} />
-							<input type="text" className="w-full border rounded px-3 py-2" placeholder="Envelope" value={custom["envelope"] ?? ""} onChange={e => setCustom({ ...custom, envelope: e.target.value })} />
+							<input type="text" className="input" placeholder="Material" value={custom["material"] ?? ""} onChange={e => setCustom({ ...custom, material: e.target.value })} />
+							<input type="text" className="input" placeholder="Envelope" value={custom["envelope"] ?? ""} onChange={e => setCustom({ ...custom, envelope: e.target.value })} />
 						</div>
 					)}
 
@@ -1228,7 +1235,7 @@ function TasksPageInner() {
 						<div className="space-y-2">
 							<h4 className="text-sm font-medium">Selected Files:</h4>
 							{files.map((file, index) => (
-								<div key={index} className="flex flex-wrap items-center justify-between gap-2 p-2 bg-gray-100 rounded">
+								<div key={index} className="flex flex-wrap items-center justify-between gap-2 p-2.5 bg-wash rounded-lg">
 									<span className="text-sm truncate max-w-[60vw]">{file.name}</span>
 									<button
 										type="button"
@@ -1247,13 +1254,13 @@ function TasksPageInner() {
 							<div key={f.id} className="text-sm">
 								<label className="block mb-1">{f.label}</label>
 								{f.type === "TEXT" && (
-									<input className="w-full border rounded px-3 py-2" value={custom[f.key] ?? ""} onChange={e => setCustom({ ...custom, [f.key]: e.target.value })} />
+									<input className="input" value={custom[f.key] ?? ""} onChange={e => setCustom({ ...custom, [f.key]: e.target.value })} />
 								)}
 								{f.type === "NUMBER" && (
-									<input type="number" className="w-full border rounded px-3 py-2" value={custom[f.key] ?? ""} onChange={e => setCustom({ ...custom, [f.key]: e.target.valueAsNumber })} />
+									<input type="number" className="input" value={custom[f.key] ?? ""} onChange={e => setCustom({ ...custom, [f.key]: e.target.valueAsNumber })} />
 								)}
 								{f.type === "DATE" && (
-									<input type="date" className="w-full border rounded px-3 py-2" value={custom[f.key] ?? ""} onChange={e => setCustom({ ...custom, [f.key]: e.target.value })} />
+									<input type="date" className="input" value={custom[f.key] ?? ""} onChange={e => setCustom({ ...custom, [f.key]: e.target.value })} />
 								)}
 								{f.type === "BOOLEAN" && (
 									<label className="flex items-center gap-2"><input type="checkbox" checked={!!custom[f.key]} onChange={e => setCustom({ ...custom, [f.key]: e.target.checked })} /> {f.label}</label>
@@ -1261,21 +1268,22 @@ function TasksPageInner() {
 							</div>
 						))}
 					</div>
-					{error && <p className="text-sm text-red-600">{error}</p>}
+					{error && <p className="text-sm text-danger">{error}</p>}
 					<button type="submit" className="w-full bg-black text-white py-2 px-3 rounded hover:bg-gray-800 disabled:opacity-50" disabled={submitting}>
 						{submitting ? "Creating..." : "Create task"}
 					</button>
 				</form>
-			</section>
+				</div>
+			</details>
 			<section>
 				<div className="flex flex-wrap items-center justify-between gap-2 mb-2">
-					<h2 className="text-lg font-medium">Tasks</h2>
+					<h2 className="text-lg font-medium">All tasks</h2>
 					<div className="flex flex-wrap items-center gap-2">
 						{selectedIds.length > 0 && (
 							<>
 								<button
 									type="button"
-									className="rounded border px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200"
+									className="btn btn-outline btn-sm"
 									onClick={async () => {
 										if (!confirm(`Archive ${selectedIds.length} task${selectedIds.length !== 1 ? 's' : ''}?`)) return;
 										let failures = 0;
@@ -1295,7 +1303,7 @@ function TasksPageInner() {
 								{isAdmin && (
 								<button
 									type="button"
-									className="rounded border px-3 py-2 text-sm hover:bg-red-50 text-red-700 border-red-300"
+									className="btn btn-danger-outline btn-sm"
 									onClick={async () => {
 										if (!confirm(`Delete ${selectedIds.length} task${selectedIds.length !== 1 ? 's' : ''}? This cannot be undone.`)) return;
 										let failures = 0;
@@ -1316,7 +1324,7 @@ function TasksPageInner() {
 							</>
 						)}
 						<span className="text-xs text-gray-600" ref={displayRef}>Auto refresh in {AUTO_REFRESH_SECONDS}s</span>
-						<button type="button" className="rounded border px-3 py-2 text-sm" onClick={() => { countdownRef.current = AUTO_REFRESH_SECONDS; load(); }}>Refresh now</button>
+						<button type="button" className="btn btn-outline btn-sm" onClick={() => { countdownRef.current = AUTO_REFRESH_SECONDS; load(); }}>Refresh now</button>
 
 					</div>
 				</div>
@@ -1339,13 +1347,13 @@ function TasksPageInner() {
 								load();
 							}
 						}}
-						className="rounded border px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200"
+						className="btn btn-outline btn-sm"
 					>
 						Archive Completed ({filteredTasks.filter(t => t.status === "DONE").length})
 					</button>
-						<a className="rounded border px-3 py-2 text-sm" href="/api/export/tasks-csv">Export CSV</a>
+						<a className="btn btn-outline btn-sm" href="/api/export/tasks-csv">Export CSV</a>
 						<form action="/api/export/tasks-sheets" method="post" className="inline">
-						<button className="rounded border px-3 py-2 text-sm" type="submit">Export to Google Sheets</button>
+						<button className="btn btn-outline btn-sm" type="submit">Export to Google Sheets</button>
 						</form>
 					</div>
 				
@@ -1353,11 +1361,11 @@ function TasksPageInner() {
 				<div className="mb-4 flex items-end justify-between gap-4">
 					<div className="flex flex-wrap items-end gap-4">
 						<div>
-							<label className="block text-sm font-medium mb-2">Filter by Category:</label>
+							<label className="field-label">Filter by Category:</label>
 							<select 
 								value={categoryFilter} 
 								onChange={(e) => setCategoryFilter(e.target.value)}
-								className="rounded border px-3 py-2 text-sm"
+								className="btn btn-outline btn-sm"
 							>
 								<option value="all">All Categories</option>
 								<option value="Rigid Boxes">Rigid Boxes</option>
@@ -1370,11 +1378,11 @@ function TasksPageInner() {
 							</select>
 				</div>
 						<div>
-							<label className="block text-sm font-medium mb-2">Filter by Payment Status:</label>
+							<label className="field-label">Filter by Payment Status:</label>
 							<select 
 								value={paymentFilter} 
 								onChange={(e) => setPaymentFilter(e.target.value)}
-								className="rounded border px-3 py-2 text-sm"
+								className="btn btn-outline btn-sm"
 							>
 								<option value="all">All Payments</option>
 								<option value="NO_PAYMENT_RECEIVED">No Payment Received</option>
@@ -1383,11 +1391,11 @@ function TasksPageInner() {
 							</select>
 						</div>
 						<div>
-							<label className="block text-sm font-medium mb-2">Group by:</label>
+							<label className="field-label">Group by:</label>
 							<select
 								value={groupBy}
 								onChange={(e) => setGroupBy(e.target.value as any)}
-								className="rounded border px-3 py-2 text-sm"
+								className="btn btn-outline btn-sm"
 							>
 								<option value="none">None</option>
 								<option value="category">Category</option>
@@ -1410,14 +1418,22 @@ function TasksPageInner() {
 				{loading ? (
 					<TasksSkeleton />
 				) : filteredTasks.length === 0 ? (
-					<p className="text-center text-gray-500">No tasks yet. Create one!</p>
+					<p className="text-center text-muted py-10">No tasks match. Create one above, or clear the filters.</p>
 				) : (
 				<ul className="space-y-2">
 						{listForRender.map((t, index) => {
 							const gkey = getGroupKey(t);
 							const color = groupBy !== "none" ? getGroupColorClasses(gkey) : null;
 							return (
-						<li key={t.id} className={"border border-black rounded p-3 " + (groupBy !== "none" ? ("border-l-4 " + (color ? color.bar : "") + " " + (color ? color.bg : "")) : "") }>
+						<li
+							key={t.id}
+							className={"ticket p-3.5 " + (groupBy !== "none" ? ("border-l-4 " + (color ? color.bar : "") + " " + (color ? color.bg : "")) : "")}
+							style={{ ["--ticket" as any]:
+								t.status === "DONE" ? "var(--ok)"
+								: t.status === "IN_PROGRESS" ? "var(--accent)"
+								: t.status === "BLOCKED" || t.status === "CANCELLED" ? "var(--danger)"
+								: undefined }}
+						>
 							{groupBy !== "none" && (index === 0 || getGroupKey(listForRender[index-1]) !== gkey) && (
 								<div className="-mt-1 -mb-1 pb-2">
 							<div className="flex items-center justify-between">
@@ -1425,7 +1441,7 @@ function TasksPageInner() {
 											<span className={`inline-block w-2.5 h-2.5 rounded-full ${color?.dot || ""}`}></span>
 											{gkey}
 										</h3>
-										<span className="text-xs text-gray-500">Group</span>
+										<span className="meta">Group</span>
 									</div>
 									<div className="border-t border-gray-200 mt-1"></div>
 								</div>
@@ -1483,33 +1499,33 @@ function TasksPageInner() {
 								>
 									<div className="grid grid-cols-2 gap-4">
 										<div>
-											<label className="block text-sm font-medium mb-1">Title</label>
-											<input className="w-full border rounded px-3 py-2" value={editTitle} onChange={e => setEditTitle(e.target.value)} required />
+											<label className="field-label">Title</label>
+											<input className="input" value={editTitle} onChange={e => setEditTitle(e.target.value)} required />
 										</div>
 										<div>
-											<label className="block text-sm font-medium mb-1">Status</label>
-																							<select className="w-full border rounded px-3 py-2" value={editStatus} onChange={e => setEditStatus(e.target.value as Task["status"]) }>
-												<option value="TODO">TODO</option>
-												<option value="IN_PROGRESS">IN_PROGRESS</option>
-												<option value="BLOCKED">BLOCKED</option>
-												<option value="DONE">DONE</option>
-												<option value="CANCELLED">CANCELLED</option>
-												<option value="ARCHIVED">ARCHIVED</option>
-												<option value="CLIENT_TO_REVERT">CLIENT_TO_REVERT</option>
+											<label className="field-label">Status</label>
+																							<select className="input" value={editStatus} onChange={e => setEditStatus(e.target.value as Task["status"]) }>
+												<option value="TODO">To do</option>
+												<option value="IN_PROGRESS">In progress</option>
+												<option value="BLOCKED">Blocked</option>
+												<option value="DONE">Done</option>
+												<option value="CANCELLED">Cancelled</option>
+												<option value="ARCHIVED">Archived</option>
+												<option value="CLIENT_TO_REVERT">Client to revert</option>
 											</select>
 											</div>
 										</div>
 
 										<div>
-											<label className="block text-sm font-medium mb-1">Description</label>
-											<textarea className="w-full border rounded px-3 py-2" value={editDesc} onChange={e => setEditDesc(e.target.value)} />
+											<label className="field-label">Description</label>
+											<textarea className="input" value={editDesc} onChange={e => setEditDesc(e.target.value)} />
 										</div>
 
 										<div className="grid grid-cols-2 gap-4">
 											<div>
-												<label className="block text-sm font-medium mb-1">Customer</label>
+												<label className="field-label">Customer</label>
 												{showNewCustomerForm ? (
-													<div className="space-y-3 p-3 border border-gray-200 rounded bg-gray-50">
+													<div className="space-y-3 p-3 border border-line rounded-lg bg-wash">
 							<div className="flex items-center justify-between">
 														<h3 className="font-medium text-sm">Add New Customer</h3>
 														<button
@@ -1530,7 +1546,7 @@ function TasksPageInner() {
 													</div>
 													<input
 														type="text"
-														className="w-full border rounded px-3 py-2"
+														className="input"
 														placeholder="Customer name *"
 														value={newCustomerName}
 														onChange={e => setNewCustomerName(e.target.value)}
@@ -1538,43 +1554,43 @@ function TasksPageInner() {
 													/>
 													<input
 														type="email"
-														className="w-full border rounded px-3 py-2"
+														className="input"
 														placeholder="Email (optional)"
 														value={newCustomerEmail}
 														onChange={e => setNewCustomerEmail(e.target.value)}
 													/>
 													<input
 														type="tel"
-														className="w-full border rounded px-3 py-2"
+														className="input"
 														placeholder="Phone (optional)"
 														value={newCustomerPhone}
 														onChange={e => setNewCustomerPhone(e.target.value)}
 													/>
 													<input
 														type="text"
-														className="w-full border rounded px-3 py-2"
+														className="input"
 														placeholder="Company (optional)"
 														value={newCustomerCompany}
 														onChange={e => setNewCustomerCompany(e.target.value)}
 													/>
 													<textarea
-														className="w-full border rounded px-3 py-2"
+														className="input"
 														placeholder="Address (optional)"
 														value={newCustomerAddress}
 														onChange={e => setNewCustomerAddress(e.target.value)}
 														rows={3}
 													/>
-													{error && <p className="text-sm text-red-600">{error}</p>}
+													{error && <p className="text-sm text-danger">{error}</p>}
 													<button
 														type="button"
 														onClick={createNewCustomer}
-														className="w-full bg-blue-600 text-white py-2 px-3 rounded hover:bg-blue-700"
+														className="btn btn-accent btn-block"
 													>
 														Create Customer
 													</button>
 												</div>
 											) : (
-												<select className="w-full border rounded px-3 py-2" value={customerId} onChange={e => {
+												<select className="input" value={customerId} onChange={e => {
 													if (e.target.value === "add-new") {
 														setShowNewCustomerForm(true);
 														setCustomerId("");
@@ -1591,8 +1607,8 @@ function TasksPageInner() {
 											)}
 										</div>
 										<div>
-											<label className="block text-sm font-medium mb-1">Assign to</label>
-											<select className="w-full border rounded px-3 py-2" value={assigneeId} onChange={e => setAssigneeId(e.target.value)}>
+											<label className="field-label">Assign to</label>
+											<select className="input" value={assigneeId} onChange={e => setAssigneeId(e.target.value)}>
 												<option value="">Select user</option>
 												{users.map(u => (
 													<option key={u.id} value={u.id}>{u.name}</option>
@@ -1603,8 +1619,8 @@ function TasksPageInner() {
 
 									<div className="grid grid-cols-2 gap-4">
 										<div>
-											<label className="block text-sm font-medium mb-1">Type</label>
-											<select className="w-full border rounded px-3 py-2" value={custom["category"] ?? ""} onChange={e => setCustom({ ...custom, category: e.target.value })}>
+											<label className="field-label">Type</label>
+											<select className="input" value={custom["category"] ?? ""} onChange={e => setCustom({ ...custom, category: e.target.value })}>
 												<option value="">Select type</option>
 												<option value="Rigid Boxes">Rigid Boxes</option>
 												<option value="Cake Boxes">Cake Boxes</option>
@@ -1615,8 +1631,8 @@ function TasksPageInner() {
 											</select>
 										</div>
 										<div>
-											<label className="block text-sm font-medium mb-1">Quantity</label>
-											<input className="w-full border rounded px-3 py-2" value={custom["quantity"] ?? ""} onChange={e => setCustom({ ...custom, quantity: e.target.value })} />
+											<label className="field-label">Quantity</label>
+											<input className="input" value={custom["quantity"] ?? ""} onChange={e => setCustom({ ...custom, quantity: e.target.value })} />
 										</div>
 									</div>
 
@@ -1626,7 +1642,7 @@ function TasksPageInner() {
 											<h4 className="font-medium mb-3">Rigid Box Specifications</h4>
 											<div className="grid grid-cols-2 gap-4">
 												<div>
-													<label className="block text-sm font-medium mb-1">Box Type</label>
+													<label className="field-label">Box Type</label>
 													<div className="space-y-2">
 														{["Lid & Base", "Magnetic", "Ribbon", "Book", "Custom"].map(type => (
 															<label key={type} className="flex items-center gap-2">
@@ -1643,8 +1659,8 @@ function TasksPageInner() {
 													</div>
 												</div>
 												<div>
-													<label className="block text-sm font-medium mb-1">Size</label>
-													<input className="w-full border rounded px-3 py-2 mb-2" value={custom["size"] ?? ""} onChange={e => setCustom({ ...custom, size: e.target.value })} />
+													<label className="field-label">Size</label>
+													<input className="input mb-2" value={custom["size"] ?? ""} onChange={e => setCustom({ ...custom, size: e.target.value })} />
 													<label className="flex items-center gap-2">
 														<input
 															type="checkbox"
@@ -1655,20 +1671,20 @@ function TasksPageInner() {
 													</label>
 												</div>
 												<div>
-													<label className="block text-sm font-medium mb-1">Top Outer</label>
-													<input className="w-full border rounded px-3 py-2" value={custom["topOuter"] ?? ""} onChange={e => setCustom({ ...custom, topOuter: e.target.value })} />
+													<label className="field-label">Top Outer</label>
+													<input className="input" value={custom["topOuter"] ?? ""} onChange={e => setCustom({ ...custom, topOuter: e.target.value })} />
 												</div>
 												<div>
-													<label className="block text-sm font-medium mb-1">Top Inner</label>
-													<input className="w-full border rounded px-3 py-2" value={custom["topInner"] ?? ""} onChange={e => setCustom({ ...custom, topInner: e.target.value })} />
+													<label className="field-label">Top Inner</label>
+													<input className="input" value={custom["topInner"] ?? ""} onChange={e => setCustom({ ...custom, topInner: e.target.value })} />
 												</div>
 												<div>
-													<label className="block text-sm font-medium mb-1">Bottom Outer</label>
-													<input className="w-full border rounded px-3 py-2" value={custom["bottomOuter"] ?? ""} onChange={e => setCustom({ ...custom, bottomOuter: e.target.value })} />
+													<label className="field-label">Bottom Outer</label>
+													<input className="input" value={custom["bottomOuter"] ?? ""} onChange={e => setCustom({ ...custom, bottomOuter: e.target.value })} />
 												</div>
 												<div>
-													<label className="block text-sm font-medium mb-1">Bottom Inner</label>
-													<input className="w-full border rounded px-3 py-2" value={custom["bottomInner"] ?? ""} onChange={e => setCustom({ ...custom, bottomInner: e.target.value })} />
+													<label className="field-label">Bottom Inner</label>
+													<input className="input" value={custom["bottomInner"] ?? ""} onChange={e => setCustom({ ...custom, bottomInner: e.target.value })} />
 												</div>
 											</div>
 											
@@ -1684,7 +1700,7 @@ function TasksPageInner() {
 												</label>
 												{custom["hasPartition"] && (
 													<textarea
-														className="w-full border rounded px-3 py-2 mt-2"
+														className="input mt-2"
 														placeholder="Partition description"
 														value={custom["partitionDescription"] ?? ""}
 														onChange={e => setCustom({ ...custom, partitionDescription: e.target.value })}
@@ -1695,14 +1711,14 @@ function TasksPageInner() {
 									)}
 
 									{custom["category"] === "Cake Boxes" && (
-										<div className="space-y-3 p-3 border border-gray-200 rounded bg-gray-50">
+										<div className="space-y-3 p-3 border border-line rounded-lg bg-wash">
 											<h3 className="font-medium text-sm">Cake Box Specifications</h3>
 											<div>
-												<label className="block text-sm font-medium mb-2">Size</label>
+												<label className="field-label">Size</label>
 												<div className="flex items-center gap-2">
 													<input
 														type="text"
-														className="flex-1 border rounded px-3 py-2"
+														className="input flex-1 w-auto"
 														placeholder="Enter size"
 														value={custom["size"] ?? ""}
 														onChange={e => setCustom({ ...custom, size: e.target.value })}
@@ -1729,7 +1745,7 @@ function TasksPageInner() {
 												{custom["hasWindow"] && (
 													<input
 														type="text"
-														className="w-full border rounded px-3 py-2 mt-2"
+														className="input mt-2"
 														placeholder="Window details"
 														value={custom["windowDetails"] ?? ""}
 														onChange={e => setCustom({ ...custom, windowDetails: e.target.value })}
@@ -1748,7 +1764,7 @@ function TasksPageInner() {
 												{custom["innerPrinting"] && (
 													<input
 														type="text"
-														className="w-full border rounded px-3 py-2 mt-2"
+														className="input mt-2"
 														placeholder="Inner printing details"
 														value={custom["innerPrintingDetails"] ?? ""}
 														onChange={e => setCustom({ ...custom, innerPrintingDetails: e.target.value })}
@@ -1759,14 +1775,14 @@ function TasksPageInner() {
 									)}
 
 									{custom["category"] === "Paper Bags" && (
-										<div className="space-y-3 p-3 border border-gray-200 rounded bg-gray-50">
+										<div className="space-y-3 p-3 border border-line rounded-lg bg-wash">
 											<h3 className="font-medium text-sm">Paper Bag Specifications</h3>
 											<div>
-												<label className="block text-sm font-medium mb-2">Size</label>
+												<label className="field-label">Size</label>
 												<div className="flex items-center gap-2">
 													<input
 														type="text"
-														className="flex-1 border rounded px-3 py-2"
+														className="input flex-1 w-auto"
 														placeholder="Enter size"
 														value={custom["size"] ?? ""}
 														onChange={e => setCustom({ ...custom, size: e.target.value })}
@@ -1793,7 +1809,7 @@ function TasksPageInner() {
 												{custom["innerPrinting"] && (
 													<input
 														type="text"
-														className="w-full border rounded px-3 py-2 mt-2"
+														className="input mt-2"
 														placeholder="Inner printing details"
 														value={custom["innerPrintingDetails"] ?? ""}
 														onChange={e => setCustom({ ...custom, innerPrintingDetails: e.target.value })}
@@ -1802,7 +1818,7 @@ function TasksPageInner() {
 											</div>
 											<input
 												type="text"
-												className="w-full border rounded px-3 py-2"
+												className="input"
 												placeholder="Rope details"
 												value={custom["rope"] ?? ""}
 												onChange={e => setCustom({ ...custom, rope: e.target.value })}
@@ -1811,20 +1827,20 @@ function TasksPageInner() {
 									)}
 
 									{custom["category"] === "Stickers" && (
-										<div className="space-y-3 p-3 border border-gray-200 rounded bg-gray-50">
+										<div className="space-y-3 p-3 border border-line rounded-lg bg-wash">
 											<h3 className="font-medium text-sm">Sticker Specifications</h3>
 											<input
 												type="text"
-												className="w-full border rounded px-3 py-2"
+												className="input"
 												placeholder="Size"
 												value={custom["size"] ?? ""}
 												onChange={e => setCustom({ ...custom, size: e.target.value })}
 											/>
 											<div className="grid grid-cols-2 gap-3">
 												<div>
-													<label className="block text-sm font-medium mb-1">Shape</label>
+													<label className="field-label">Shape</label>
 													<select
-														className="w-full border rounded px-3 py-2"
+														className="input"
 														value={custom["shape"] ?? "Rectangle"}
 														onChange={e => setCustom({ ...custom, shape: e.target.value })}
 													>
@@ -1834,9 +1850,9 @@ function TasksPageInner() {
 													</select>
 												</div>
 												<div>
-													<label className="block text-sm font-medium mb-1">Material</label>
+													<label className="field-label">Material</label>
 													<select
-														className="w-full border rounded px-3 py-2"
+														className="input"
 														value={custom["material"] ?? "Artsticker"}
 														onChange={e => setCustom({ ...custom, material: e.target.value })}
 													>
@@ -1851,17 +1867,17 @@ function TasksPageInner() {
 									)}
 
 									{custom["category"] === "Cards" && (
-										<div className="space-y-3 p-3 border border-gray-200 rounded bg-gray-50">
+										<div className="space-y-3 p-3 border border-line rounded-lg bg-wash">
 											<h3 className="font-medium text-sm">Card Specifications</h3>
 											<input
 												type="text"
-												className="w-full border rounded px-3 py-2"
+												className="input"
 												placeholder="Size"
 												value={custom["size"] ?? ""}
 												onChange={e => setCustom({ ...custom, size: e.target.value })}
 											/>
 											<div>
-												<label className="block text-sm font-medium mb-1">Sides</label>
+												<label className="field-label">Sides</label>
 												<div className="flex items-center gap-4">
 													<label className="flex items-center gap-2 text-sm">
 														<input
@@ -1887,7 +1903,7 @@ function TasksPageInner() {
 											</div>
 											<input
 												type="text"
-												className="w-full border rounded px-3 py-2"
+												className="input"
 												placeholder="Material"
 												value={custom["material"] ?? ""}
 												onChange={e => setCustom({ ...custom, material: e.target.value })}
@@ -1900,20 +1916,20 @@ function TasksPageInner() {
 											<h4 className="font-medium mb-3">Invitation Specifications</h4>
 											<div className="grid grid-cols-2 gap-4">
 												<div>
-													<label className="block text-sm font-medium mb-1">Size</label>
-													<input className="w-full border rounded px-3 py-2 mb-2" value={custom["size"] ?? ""} onChange={e => setCustom({ ...custom, size: e.target.value })} />
+													<label className="field-label">Size</label>
+													<input className="input mb-2" value={custom["size"] ?? ""} onChange={e => setCustom({ ...custom, size: e.target.value })} />
 													<label className="flex items-center gap-2">
 														<input type="checkbox" checked={custom["existingSize"] ?? false} onChange={e => setCustom({ ...custom, existingSize: e.target.checked })} />
 														Existing size
 													</label>
 												</div>
 												<div>
-													<label className="block text-sm font-medium mb-1">Material</label>
-													<input className="w-full border rounded px-3 py-2" value={custom["material"] ?? ""} onChange={e => setCustom({ ...custom, material: e.target.value })} />
+													<label className="field-label">Material</label>
+													<input className="input" value={custom["material"] ?? ""} onChange={e => setCustom({ ...custom, material: e.target.value })} />
 												</div>
 												<div>
-													<label className="block text-sm font-medium mb-1">Envelope</label>
-													<input className="w-full border rounded px-3 py-2" value={custom["envelope"] ?? ""} onChange={e => setCustom({ ...custom, envelope: e.target.value })} />
+													<label className="field-label">Envelope</label>
+													<input className="input" value={custom["envelope"] ?? ""} onChange={e => setCustom({ ...custom, envelope: e.target.value })} />
 												</div>
 											</div>
 										</div>
@@ -1951,7 +1967,7 @@ function TasksPageInner() {
 										<div className="space-y-2">
 											<h4 className="text-sm font-medium">New Files:</h4>
 											{files.map((file, index) => (
-												<div key={index} className="flex flex-wrap items-center justify-between gap-2 p-2 bg-gray-100 rounded">
+												<div key={index} className="flex flex-wrap items-center justify-between gap-2 p-2.5 bg-wash rounded-lg">
 													<span className="text-sm truncate max-w-[60vw]">{file.name}</span>
 													<button
 														type="button"
@@ -1970,7 +1986,7 @@ function TasksPageInner() {
 										<div className="space-y-2">
 											<h4 className="text-sm font-medium">Existing Attachments:</h4>
 											{t.customFields.attachments.map((attachment: string, index: number) => (
-												<div key={index} className="flex flex-wrap items-center justify-between gap-2 p-2 bg-gray-100 rounded">
+												<div key={index} className="flex flex-wrap items-center justify-between gap-2 p-2.5 bg-wash rounded-lg">
 													<a
 														href={attachment.startsWith('http') ? attachment : attachment.startsWith('/api/files/') ? attachment : `/api/files/${encodeURIComponent(attachment)}`}
 														target="_blank"
@@ -2020,16 +2036,15 @@ function TasksPageInner() {
 													});
 													load();
 												}}
-												className="text-xs px-2 py-1 rounded border bg-white"
-												style={{ color: "var(--foreground)" }}
+												className="btn btn-outline btn-sm"
 											>
-												<option value="TODO">TODO</option>
-												<option value="IN_PROGRESS">IN_PROGRESS</option>
-												<option value="BLOCKED">BLOCKED</option>
-												<option value="DONE">DONE</option>
-												<option value="CANCELLED">CANCELLED</option>
-												<option value="ARCHIVED">ARCHIVED</option>
-												<option value="CLIENT_TO_REVERT">CLIENT_TO_REVERT</option>
+												<option value="TODO">To do</option>
+												<option value="IN_PROGRESS">In progress</option>
+												<option value="BLOCKED">Blocked</option>
+												<option value="DONE">Done</option>
+												<option value="CANCELLED">Cancelled</option>
+												<option value="ARCHIVED">Archived</option>
+												<option value="CLIENT_TO_REVERT">Client to revert</option>
 											</select>
 											<select
 												value={t.customFields?.paymentStatus || "NO_PAYMENT_RECEIVED"}
@@ -2046,8 +2061,7 @@ function TasksPageInner() {
 													});
 													load();
 												}}
-												className="text-xs px-2 py-1 rounded border bg-white"
-												style={{ color: "var(--foreground)" }}
+												className="btn btn-outline btn-sm"
 											>
 												<option value="NO_PAYMENT_RECEIVED">No Payment</option>
 												<option value="ADVANCE_RECEIVED">Advance</option>
@@ -2058,26 +2072,26 @@ function TasksPageInner() {
 							{/* Badges row below title */}
 							<div className="mt-1 flex flex-wrap items-center gap-1">
 								{t.customFields?.quantity && (
-									<span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-100 text-blue-800">Qty: {t.customFields.quantity}</span>
+									<span className="chip chip-info chip-plain">Qty: {t.customFields.quantity}</span>
 								)}
 								{t.customerRef?.name && (
-									<span className="text-[10px] px-2 py-0.5 rounded-full" style={{ background: "var(--muted)", color: "var(--muted-foreground)" }}>{t.customerRef.name}</span>
+									<span className="chip chip-plain">{t.customerRef.name}</span>
 								)}
 								{t.customFields?.category && (
-									<span className="text-[10px] px-2 py-0.5 rounded-full" style={{ background: "var(--muted)", color: "var(--muted-foreground)" }}>{t.customFields.category}</span>
+									<span className="chip chip-plain">{t.customFields.category}</span>
 								)}
 								{t.assignments && t.assignments.map(a => (
-									<span key={a.id} className="text-[10px] px-2 py-0.5 rounded-full" style={{ background: "var(--muted)", color: "var(--muted-foreground)" }}>{a.user.name}</span>
+									<span key={a.id} className="chip chip-plain">{a.user.name}</span>
 								))}
 								{isAssignedToMe(t) && (
-									<span className="text-[10px] px-2 py-0.5 rounded-full" style={{ background: "var(--muted)", color: "var(--muted-foreground)" }}>Assigned to me</span>
+									<span className="chip chip-plain">Assigned to me</span>
 								)}
 							</div>
 							{t.dueAt && <p className="text-xs text-gray-600 mt-1">Due: {new Date(t.dueAt).toLocaleString()}</p>}
 									<div className="mt-2 flex gap-2">
 										<button
 											type="button"
-											className="text-xs px-2 py-1 rounded border hover:bg-gray-50"
+											className="btn btn-outline btn-sm"
 											onClick={() => {
 												setEditingId(t.id);
 												setEditTitle(t.title);
@@ -2095,14 +2109,14 @@ function TasksPageInner() {
 										</button>
 										<button
 											type="button"
-											className="text-xs px-2 py-1 rounded border hover:bg-gray-50"
+											className="btn btn-outline btn-sm"
 											onClick={() => setViewingId(t.id)}
 										>
 											View
 										</button>
 										<button
 											type="button"
-											className="text-xs px-2 py-1 rounded border hover:bg-gray-50 disabled:opacity-50"
+											className="btn btn-outline btn-sm"
 											onClick={() => deleteTask(t.id)}
 											disabled={deletingId === t.id}
 										>
@@ -2111,7 +2125,7 @@ function TasksPageInner() {
 
 										<button
 											type="button"
-											className="text-xs px-2 py-1 rounded border hover:bg-gray-50 disabled:opacity-50"
+											className="btn btn-outline btn-sm"
 											onClick={() => duplicateTask(t)}
 											disabled={duplicatingId === t.id}
 										>
@@ -2139,14 +2153,14 @@ function TasksPageInner() {
 													e.preventDefault();
 													createSubtask(t.id);
 												}}
-												className="space-y-3 p-3 border border-gray-200 rounded bg-gray-50"
+												className="space-y-3 p-3 border border-line rounded-lg bg-wash"
 											>
 												<div className="grid grid-cols-2 gap-3">
 													<div>
-														<label className="block text-xs font-medium mb-1">Title</label>
+														<label className="field-label">Title</label>
 														<input
 															type="text"
-															className="w-full border rounded px-2 py-1 text-sm"
+															className="input text-sm"
 															value={subtaskTitle}
 															onChange={(e) => setSubtaskTitle(e.target.value)}
 															placeholder="Subtask title"
@@ -2154,9 +2168,9 @@ function TasksPageInner() {
 														/>
 													</div>
 													<div>
-														<label className="block text-xs font-medium mb-1">Assign to</label>
+														<label className="field-label">Assign to</label>
 														<select
-															className="w-full border rounded px-2 py-1 text-sm"
+															className="input text-sm"
 															value={subtaskAssigneeId}
 															onChange={(e) => setSubtaskAssigneeId(e.target.value)}
 														>
@@ -2169,7 +2183,7 @@ function TasksPageInner() {
 												</div>
 												<div className="grid grid-cols-2 gap-3">
 													<div>
-														<label className="block text-xs font-medium mb-1">Due Date</label>
+														<label className="field-label">Due Date</label>
 														<DateTimeSelector 
 															label="Due" 
 															value={subtaskDueAt} 
@@ -2177,11 +2191,11 @@ function TasksPageInner() {
 														/>
 													</div>
 													<div>
-														<label className="block text-xs font-medium mb-1">Est. Hours</label>
+														<label className="field-label">Est. Hours</label>
 														<input
 															type="number"
 															step="0.5"
-															className="w-full border rounded px-2 py-1 text-sm"
+															className="input text-sm"
 															value={subtaskEstimatedHours || ""}
 															onChange={(e) => setSubtaskEstimatedHours(e.target.valueAsNumber || null)}
 														/>
@@ -2190,13 +2204,13 @@ function TasksPageInner() {
 												<div className="flex gap-2">
 													<button
 														type="submit"
-														className="text-xs px-3 py-1 rounded bg-blue-600 text-white"
+														className="btn btn-accent btn-sm"
 													>
 														Add Subtask
 													</button>
 													<button
 														type="button"
-														className="text-xs px-3 py-1 rounded border"
+														className="btn btn-outline btn-sm"
 														onClick={() => {
 															setAddingSubtaskToTaskId(null);
 															setSubtaskTitle("");
@@ -2227,10 +2241,10 @@ function TasksPageInner() {
 															>
 																<div className="grid grid-cols-2 gap-3">
 																	<div>
-																		<label className="block text-xs font-medium mb-1">Title</label>
+																		<label className="field-label">Title</label>
 																		<input
 																			type="text"
-																			className="w-full border rounded px-2 py-1 text-sm"
+																			className="input text-sm"
 																			value={editSubtaskTitle}
 																			onChange={(e) => setEditSubtaskTitle(e.target.value)}
 																			placeholder="Subtask title"
@@ -2238,9 +2252,9 @@ function TasksPageInner() {
 																		/>
 																	</div>
 																	<div>
-																		<label className="block text-xs font-medium mb-1">Assign to</label>
+																		<label className="field-label">Assign to</label>
 																		<select
-																			className="w-full border rounded px-2 py-1 text-sm"
+																			className="input text-sm"
 																			value={editSubtaskAssigneeId}
 																			onChange={(e) => setEditSubtaskAssigneeId(e.target.value)}
 																		>
@@ -2253,7 +2267,7 @@ function TasksPageInner() {
 																</div>
 																<div className="grid grid-cols-2 gap-3">
 																	<div>
-																		<label className="block text-xs font-medium mb-1">Due Date</label>
+																		<label className="field-label">Due Date</label>
 																		<DateTimeSelector 
 																			label="Due" 
 																			value={editSubtaskDueAt} 
@@ -2261,11 +2275,11 @@ function TasksPageInner() {
 																		/>
 																	</div>
 																	<div>
-																		<label className="block text-xs font-medium mb-1">Est. Hours</label>
+																		<label className="field-label">Est. Hours</label>
 																		<input
 																			type="number"
 																			step="0.5"
-																			className="w-full border rounded px-2 py-1 text-sm"
+																			className="input text-sm"
 																			value={editSubtaskEstimatedHours || ""}
 																			onChange={(e) => setEditSubtaskEstimatedHours(e.target.valueAsNumber || null)}
 																		/>
@@ -2274,13 +2288,13 @@ function TasksPageInner() {
 																<div className="flex gap-2">
 																	<button
 																		type="submit"
-																		className="text-xs px-3 py-1 rounded bg-blue-600 text-white"
+																		className="btn btn-accent btn-sm"
 																	>
 																		Save
 																	</button>
 																	<button
 																		type="button"
-																		className="text-xs px-3 py-1 rounded border"
+																		className="btn btn-outline btn-sm"
 																		onClick={() => {
 																			setEditingSubtaskId(null);
 																			setEditSubtaskTitle("");
@@ -2316,7 +2330,7 @@ function TasksPageInner() {
 																			</span>
 																		)}
 																		{subtask.dueAt && (
-																			<span className="text-xs text-gray-500">
+																			<span className="meta">
 																				Due: {new Date(subtask.dueAt).toLocaleDateString()}
 																			</span>
 																		)}
@@ -2332,7 +2346,7 @@ function TasksPageInner() {
 																			setEditSubtaskDueAt(subtask.dueAt ? new Date(subtask.dueAt).toISOString().slice(0,16) : "");
 																			setEditSubtaskEstimatedHours(null);
 																		}}
-																		className="text-xs px-2 py-1 rounded border hover:bg-gray-50"
+																		className="btn btn-outline btn-sm"
 																	>
 																		Edit
 																	</button>
@@ -2368,8 +2382,8 @@ function TasksPageInner() {
 				if (!task) return null;
 				
 				return (
-					<div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-						<div className="bg-white rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+					<div className="fixed inset-0 bg-black/55 backdrop-blur-[2px] flex items-center justify-center z-50 p-3">
+						<div className="card card-pad max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto !bg-[var(--raised)] shadow-lg">
 							<div className="flex flex-wrap items-center justify-between gap-2 mb-4">
 								<h2 className="text-xl font-semibold">Task Details</h2>
 								<button
@@ -2387,21 +2401,21 @@ function TasksPageInner() {
 									<h3 className="font-medium text-gray-900 mb-2">Basic Information</h3>
 									<div className="grid grid-cols-2 gap-4">
 										<div>
-											<label className="block text-sm font-medium text-gray-700">Title</label>
+											<label className="field-label">Title</label>
 											<p className="text-sm text-gray-900">{task.title}</p>
 										</div>
 										<div>
-											<label className="block text-sm font-medium text-gray-700">Status</label>
-											<span className="inline-block px-2 py-1 text-xs rounded" style={{ background: "var(--muted)", color: "var(--muted-foreground)" }}>
+											<label className="field-label">Status</label>
+											<span className="chip chip-plain">
 												{task.status}
 											</span>
 										</div>
 										<div>
-											<label className="block text-sm font-medium text-gray-700">Description</label>
+											<label className="field-label">Description</label>
 											<p className="text-sm text-gray-900">{task.description || "No description"}</p>
 										</div>
 										<div>
-											<label className="block text-sm font-medium text-gray-700">Created</label>
+											<label className="field-label">Created</label>
 											<p className="text-sm text-gray-900">{new Date(task.createdAt).toLocaleString()}</p>
 										</div>
 									</div>
@@ -2414,13 +2428,13 @@ function TasksPageInner() {
 										<div className="grid grid-cols-2 gap-4">
 											{task.startAt && (
 												<div>
-													<label className="block text-sm font-medium text-gray-700">Start Date</label>
+													<label className="field-label">Start Date</label>
 													<p className="text-sm text-gray-900">{new Date(task.startAt).toLocaleString()}</p>
 												</div>
 											)}
 											{task.dueAt && (
 												<div>
-													<label className="block text-sm font-medium text-gray-700">Due Date</label>
+													<label className="field-label">Due Date</label>
 													<p className="text-sm text-gray-900">{new Date(task.dueAt).toLocaleString()}</p>
 												</div>
 											)}
@@ -2435,16 +2449,16 @@ function TasksPageInner() {
 										<div className="space-y-2">
 											{task.customerRef && (
 												<div>
-													<label className="block text-sm font-medium text-gray-700">Customer</label>
+													<label className="field-label">Customer</label>
 													<p className="text-sm text-gray-900">{task.customerRef.name}</p>
 												</div>
 											)}
 											{task.assignments && task.assignments.length > 0 && (
 												<div>
-													<label className="block text-sm font-medium text-gray-700">Assigned To</label>
+													<label className="field-label">Assigned To</label>
 													<div className="flex flex-wrap gap-1 mt-1">
 														{task.assignments.map(a => (
-															<span key={a.id} className="text-xs px-2 py-1 rounded" style={{ background: "var(--muted)", color: "var(--muted-foreground)" }}>
+															<span key={a.id} className="chip chip-plain">
 																{a.user.name}
 															</span>
 														))}
@@ -2462,31 +2476,31 @@ function TasksPageInner() {
 										<div className="space-y-3">
 											{task.customFields.quantity && (
 												<div>
-													<label className="block text-sm font-medium text-gray-700">Quantity</label>
+													<label className="field-label">Quantity</label>
 													<p className="text-sm text-gray-900">{task.customFields.quantity}</p>
 												</div>
 											)}
 											{task.customFields.category && (
 												<div>
-													<label className="block text-sm font-medium text-gray-700">Category</label>
+													<label className="field-label">Category</label>
 													<p className="text-sm text-gray-900">{task.customFields.category}</p>
 												</div>
 											)}
 											
 											{/* Rigid Box specific fields */}
 											{task.customFields.category === "Rigid Boxes" && (
-												<div className="border border-gray-200 rounded p-3 bg-gray-50">
+												<div className="border border-line rounded-lg p-3 bg-wash">
 													<h4 className="font-medium text-sm mb-2">Rigid Box Specifications</h4>
 													<div className="grid grid-cols-2 gap-3 text-sm">
 														{task.customFields.boxType && (
 															<div>
-																<label className="block text-xs font-medium text-gray-600">Box Type</label>
+																<label className="field-label">Box Type</label>
 																<p className="text-gray-900">{task.customFields.boxType}</p>
 															</div>
 														)}
 														{task.customFields.size && (
 															<div>
-																<label className="block text-xs font-medium text-gray-600">Size</label>
+																<label className="field-label">Size</label>
 																<p className="text-gray-900">
 																	{task.customFields.size}
 																	{task.customFields.existingSize && " (Existing size)"}
@@ -2495,31 +2509,31 @@ function TasksPageInner() {
 														)}
 														{task.customFields.topOuter && (
 															<div>
-																<label className="block text-xs font-medium text-gray-600">Top Outer</label>
+																<label className="field-label">Top Outer</label>
 																<p className="text-gray-900">{task.customFields.topOuter}</p>
 															</div>
 														)}
 														{task.customFields.topInner && (
 															<div>
-																<label className="block text-xs font-medium text-gray-600">Top Inner</label>
+																<label className="field-label">Top Inner</label>
 																<p className="text-gray-900">{task.customFields.topInner}</p>
 															</div>
 														)}
 														{task.customFields.bottomOuter && (
 															<div>
-																<label className="block text-xs font-medium text-gray-600">Bottom Outer</label>
+																<label className="field-label">Bottom Outer</label>
 																<p className="text-gray-900">{task.customFields.bottomOuter}</p>
 															</div>
 														)}
 														{task.customFields.bottomInner && (
 															<div>
-																<label className="block text-xs font-medium text-gray-600">Bottom Inner</label>
+																<label className="field-label">Bottom Inner</label>
 																<p className="text-gray-900">{task.customFields.bottomInner}</p>
 															</div>
 														)}
 														{task.customFields.hasPartition && (
 															<div className="col-span-2">
-																<label className="block text-xs font-medium text-gray-600">Partition</label>
+																<label className="field-label">Partition</label>
 																<p className="text-gray-900">
 																	Yes
 																	{task.customFields.partitionDescription && ` - ${task.customFields.partitionDescription}`}
@@ -2532,12 +2546,12 @@ function TasksPageInner() {
 
 											{/* Cake Boxes specific fields */}
 											{task.customFields.category === "Cake Boxes" && (
-												<div className="border border-gray-200 rounded p-3 bg-gray-50">
+												<div className="border border-line rounded-lg p-3 bg-wash">
 													<h4 className="font-medium text-sm mb-2">Cake Box Specifications</h4>
 													<div className="grid grid-cols-2 gap-3 text-sm">
 														{task.customFields.size && (
 															<div>
-																<label className="block text-xs font-medium text-gray-600">Size</label>
+																<label className="field-label">Size</label>
 																<p className="text-gray-900">
 																	{task.customFields.size}
 																	{task.customFields.existingSize && " (Existing size)"}
@@ -2546,13 +2560,13 @@ function TasksPageInner() {
 														)}
 														{task.customFields.hasWindow && (
 															<div>
-																<label className="block text-xs font-medium text-gray-600">Window</label>
+																<label className="field-label">Window</label>
 																<p className="text-gray-900">Yes{task.customFields.windowDetails ? ` - ${task.customFields.windowDetails}` : ""}</p>
 															</div>
 														)}
 														{task.customFields.innerPrinting && (
 															<div>
-																<label className="block text-xs font-medium text-gray-600">Inner Printing</label>
+																<label className="field-label">Inner Printing</label>
 																<p className="text-gray-900">Yes{task.customFields.innerPrintingDetails ? ` - ${task.customFields.innerPrintingDetails}` : ""}</p>
 															</div>
 														)}
@@ -2562,12 +2576,12 @@ function TasksPageInner() {
 
 											{/* Paper Bags specific fields */}
 											{task.customFields.category === "Paper Bags" && (
-												<div className="border border-gray-200 rounded p-3 bg-gray-50">
+												<div className="border border-line rounded-lg p-3 bg-wash">
 													<h4 className="font-medium text-sm mb-2">Paper Bag Specifications</h4>
 													<div className="grid grid-cols-2 gap-3 text-sm">
 														{task.customFields.size && (
 															<div>
-																<label className="block text-xs font-medium text-gray-600">Size</label>
+																<label className="field-label">Size</label>
 																<p className="text-gray-900">
 																	{task.customFields.size}
 																	{task.customFields.existingSize && " (Existing size)"}
@@ -2576,13 +2590,13 @@ function TasksPageInner() {
 														)}
 														{task.customFields.innerPrinting && (
 															<div>
-																<label className="block text-xs font-medium text-gray-600">Inner Printing</label>
+																<label className="field-label">Inner Printing</label>
 																<p className="text-gray-900">Yes{task.customFields.innerPrintingDetails ? ` - ${task.customFields.innerPrintingDetails}` : ""}</p>
 															</div>
 														)}
 														{task.customFields.rope && (
 															<div>
-																<label className="block text-xs font-medium text-gray-600">Rope</label>
+																<label className="field-label">Rope</label>
 																<p className="text-gray-900">{task.customFields.rope}</p>
 															</div>
 														)}
@@ -2592,24 +2606,24 @@ function TasksPageInner() {
 
 											{/* Stickers specific fields */}
 											{task.customFields.category === "Stickers" && (
-												<div className="border border-gray-200 rounded p-3 bg-gray-50">
+												<div className="border border-line rounded-lg p-3 bg-wash">
 													<h4 className="font-medium text-sm mb-2">Sticker Specifications</h4>
 													<div className="grid grid-cols-2 gap-3 text-sm">
 														{task.customFields.size && (
 															<div>
-																<label className="block text-xs font-medium text-gray-600">Size</label>
+																<label className="field-label">Size</label>
 																<p className="text-gray-900">{task.customFields.size}</p>
 															</div>
 														)}
 														{task.customFields.shape && (
 															<div>
-																<label className="block text-xs font-medium text-gray-600">Shape</label>
+																<label className="field-label">Shape</label>
 																<p className="text-gray-900">{task.customFields.shape}</p>
 															</div>
 														)}
 														{task.customFields.material && (
 															<div>
-																<label className="block text-xs font-medium text-gray-600">Material</label>
+																<label className="field-label">Material</label>
 																<p className="text-gray-900">{task.customFields.material}</p>
 															</div>
 														)}
@@ -2619,24 +2633,24 @@ function TasksPageInner() {
 
 											{/* Cards specific fields */}
 											{task.customFields.category === "Cards" && (
-												<div className="border border-gray-200 rounded p-3 bg-gray-50">
+												<div className="border border-line rounded-lg p-3 bg-wash">
 													<h4 className="font-medium text-sm mb-2">Card Specifications</h4>
 													<div className="grid grid-cols-2 gap-3 text-sm">
 														{task.customFields.size && (
 															<div>
-																<label className="block text-xs font-medium text-gray-600">Size</label>
+																<label className="field-label">Size</label>
 																<p className="text-gray-900">{task.customFields.size}</p>
 															</div>
 														)}
 														{task.customFields.sides && (
 															<div>
-																<label className="block text-xs font-medium text-gray-600">Sides</label>
+																<label className="field-label">Sides</label>
 																<p className="text-gray-900">{task.customFields.sides === "double" ? "Double side" : "Single side"}</p>
 															</div>
 														)}
 														{task.customFields.material && (
 															<div>
-																<label className="block text-xs font-medium text-gray-600">Material</label>
+																<label className="field-label">Material</label>
 																<p className="text-gray-900">{task.customFields.material}</p>
 															</div>
 														)}
@@ -2645,24 +2659,24 @@ function TasksPageInner() {
 											)}
 
 											{task.customFields.category === "Invitation" && (
-												<div className="border border-gray-200 rounded p-3 bg-gray-50">
+												<div className="border border-line rounded-lg p-3 bg-wash">
 													<h4 className="font-medium text-sm mb-2">Invitation Specifications</h4>
 													<div className="grid grid-cols-2 gap-3 text-sm">
 														{task.customFields.size && (
 															<div>
-																<label className="block text-xs font-medium text-gray-600">Size</label>
+																<label className="field-label">Size</label>
 																<p className="text-gray-900">{task.customFields.size}{task.customFields.existingSize && " (Existing size)"}</p>
 															</div>
 														)}
 														{task.customFields.material && (
 															<div>
-																<label className="block text-xs font-medium text-gray-600">Material</label>
+																<label className="field-label">Material</label>
 																<p className="text-gray-900">{task.customFields.material}</p>
 															</div>
 														)}
 														{task.customFields.envelope && (
 															<div>
-																<label className="block text-xs font-medium text-gray-600">Envelope</label>
+																<label className="field-label">Envelope</label>
 																<p className="text-gray-900">{task.customFields.envelope}</p>
 															</div>
 														)}
@@ -2704,7 +2718,7 @@ function TasksPageInner() {
 
 export default function TasksPage() {
 	return (
-		<Suspense fallback={<div className="text-center text-gray-500 py-12">Loading...</div>}>
+		<Suspense fallback={<div className="text-center text-muted py-12">Loading…</div>}>
 			<TasksPageInner />
 		</Suspense>
 	);

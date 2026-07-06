@@ -126,19 +126,19 @@ export default function CustomFieldsPage() {
 		<div className={isAdmin ? "grid gap-6 sm:grid-cols-2" : ""}>
 			{isAdmin && (
 				<section>
-					<h1 className="text-xl font-semibold mb-3">Add custom field</h1>
+					<h1 className="text-xl font-semibold tracking-tight mb-3">Add custom field</h1>
 					<form onSubmit={onCreate} className="space-y-3">
-						<input className="w-full border rounded px-3 py-2 bg-background" placeholder="Key (e.g., sku)" value={keyv} onChange={e => setKeyv(e.target.value)} required />
-						<input className="w-full border rounded px-3 py-2 bg-background" placeholder="Label" value={label} onChange={e => setLabel(e.target.value)} required />
-						<select className="w-full border rounded px-3 py-2 bg-background" value={type} onChange={e => setType(e.target.value)}>
+						<input className="input" placeholder="Key (e.g., sku)" value={keyv} onChange={e => setKeyv(e.target.value)} required />
+						<input className="input" placeholder="Label" value={label} onChange={e => setLabel(e.target.value)} required />
+						<select className="input" value={type} onChange={e => setType(e.target.value)}>
 							<option>TEXT</option>
 							<option>NUMBER</option>
 							<option>DATE</option>
 							<option>BOOLEAN</option>
 						</select>
 						<label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={required} onChange={e => setRequired(e.target.checked)} /> Required</label>
-						<input className="w-full border rounded px-3 py-2 bg-background" type="number" value={order} onChange={e => setOrder(parseInt(e.target.value || "0"))} />
-						<button disabled={creating} className="rounded bg-gray-900 px-3 py-2 text-white disabled:opacity-50">
+						<input className="input" type="number" value={order} onChange={e => setOrder(parseInt(e.target.value || "0"))} />
+						<button disabled={creating} className="btn btn-primary">
 							{creating ? "Creating..." : "Create"}
 						</button>
 					</form>
@@ -152,7 +152,7 @@ export default function CustomFieldsPage() {
 			<section>
 				<div className="flex items-center justify-between mb-2">
 					<h2 className="text-lg font-medium">Fields</h2>
-					{!isAdmin && <span className="text-xs text-gray-500">View only — ask an admin to make changes</span>}
+					{!isAdmin && <span className="meta">View only — ask an admin to make changes</span>}
 				</div>
 				{loading ? (
 					<CustomFieldsSkeleton />
@@ -167,9 +167,9 @@ export default function CustomFieldsPage() {
 								{editingId === f.id ? (
 									<form onSubmit={(e) => onSaveEdit(e, f.id)} className="grid gap-2 sm:grid-cols-2">
 										<div className="sm:col-span-2">
-											<input className="w-full border rounded px-3 py-2 bg-background" value={editLabel} onChange={e => setEditLabel(e.target.value)} required />
+											<input className="input" value={editLabel} onChange={e => setEditLabel(e.target.value)} required />
 										</div>
-										<select className="w-full border rounded px-3 py-2 bg-background" value={editType} onChange={e => setEditType(e.target.value)}>
+										<select className="input" value={editType} onChange={e => setEditType(e.target.value)}>
 											<option>TEXT</option>
 											<option>NUMBER</option>
 											<option>DATE</option>
@@ -178,7 +178,7 @@ export default function CustomFieldsPage() {
 										<label className="flex items-center gap-2 text-sm">
 											<input type="checkbox" checked={editRequired} onChange={e => setEditRequired(e.target.checked)} /> Required
 										</label>
-										<input className="w-full border rounded px-3 py-2 bg-background" type="number" value={editOrder} onChange={e => setEditOrder(parseInt(e.target.value || "0"))} />
+										<input className="input" type="number" value={editOrder} onChange={e => setEditOrder(parseInt(e.target.value || "0"))} />
 										{rowError?.id === f.id && (
 											<div className="sm:col-span-2 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
 												{rowError.message}
@@ -195,12 +195,12 @@ export default function CustomFieldsPage() {
 									<div>
 										<div className="flex items-center justify-between gap-2">
 											<div className="min-w-0">
-												<div className="font-medium">{f.label} <span className="text-xs text-gray-500">({f.key})</span></div>
+												<div className="font-medium">{f.label} <span className="meta">({f.key})</span></div>
 												<div className="text-sm text-gray-600">Type: {f.type} • Required: {f.required ? "Yes" : "No"} • Order: {f.order}</div>
 											</div>
 											{isAdmin && (
 												<div className="flex gap-2 flex-shrink-0">
-													<button className="rounded border px-3 py-2 text-sm" onClick={() => {
+													<button className="btn btn-outline btn-sm" onClick={() => {
 														setEditingId(f.id);
 														setRowError(null);
 														setEditLabel(f.label);

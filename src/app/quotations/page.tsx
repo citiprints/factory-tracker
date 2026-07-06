@@ -20,7 +20,7 @@ function QuotationsSkeleton() {
 	return (
 		<div className="space-y-4">
 			{[1, 2, 3, 4, 5].map((i) => (
-				<div key={i} className="border border-black rounded p-3">
+				<div key={i} className="ticket p-3.5">
 					<div className="animate-pulse">
 						<div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-2">
 							<div className="flex flex-wrap items-center gap-2 min-w-0">
@@ -146,7 +146,7 @@ function DateTimeSelector({ label, value, onChange }: { label: string; value: st
 						value={timePart}
 						onChange={(e) => updateTime(e.target.value)}
 						onClick={(e) => e.stopPropagation()}
-						className="w-full border rounded px-2 py-1 text-sm"
+						className="input text-sm"
 					/>
 				</div>
 			)}
@@ -318,9 +318,9 @@ export default function QuotationsPage() {
 	}
 
 	return (
-		<div className="container mx-auto p-4">
+		<div>
 			<div className="flex items-center justify-between mb-6">
-				<h1 className="text-2xl font-bold">Quotations</h1>
+				<div><h1 className="text-2xl font-semibold tracking-tight">Quotations</h1><p className="text-sm text-muted mt-0.5">Draft, send, and convert to jobs</p></div>
 				<div className="flex items-center gap-4">
 					<span className="text-sm text-gray-600">
 						{quotations.length} quotation{quotations.length !== 1 ? 's' : ''}
@@ -337,7 +337,7 @@ export default function QuotationsPage() {
 			) : (
 				<div className="space-y-4">
 					{quotations.map((q) => (
-						<div key={q.id} className="border border-black rounded p-3">
+						<div key={q.id} className="ticket p-3.5">
 							<div className="flex items-center justify-between mb-2">
 								<div className="flex items-center gap-2">
 									<div className="w-2 h-2 rounded-full bg-blue-500"></div>
@@ -346,14 +346,14 @@ export default function QuotationsPage() {
 								<div className="flex gap-2">
 									<button
 										type="button"
-										className="text-xs px-2 py-1 rounded border hover:bg-gray-50"
+										className="btn btn-outline btn-sm"
 										onClick={() => setViewingId(viewingId === q.id ? null : q.id)}
 									>
 										{viewingId === q.id ? "Hide" : "View"}
 									</button>
 									<button
 										type="button"
-										className="text-xs px-2 py-1 rounded border hover:bg-gray-50"
+										className="btn btn-outline btn-sm"
 										onClick={() => {
 											setEditingId(q.id);
 											setEditTitle(q.title);
@@ -369,7 +369,7 @@ export default function QuotationsPage() {
 									</button>
 									<button
 										type="button"
-										className="text-xs px-2 py-1 rounded border hover:bg-gray-50 disabled:opacity-50"
+										className="btn btn-outline btn-sm"
 										onClick={() => deleteQuotation(q.id)}
 										disabled={deletingId === q.id}
 									>
@@ -377,7 +377,7 @@ export default function QuotationsPage() {
 									</button>
 									<button
 										type="button"
-										className="text-xs px-2 py-1 rounded border hover:bg-gray-50 disabled:opacity-50"
+										className="btn btn-outline btn-sm"
 										onClick={() => setConvertingId(q.id)}
 										disabled={convertingId === q.id}
 									>
@@ -522,19 +522,19 @@ export default function QuotationsPage() {
 						<h2 className="text-xl font-semibold mb-4">Edit Quotation</h2>
 						<div className="space-y-3">
 							<div>
-								<label className="block text-sm font-medium mb-1">Title</label>
+								<label className="field-label">Title</label>
 								<input
 									type="text"
-									className="w-full border rounded px-3 py-2"
+									className="input"
 									value={editTitle}
 									onChange={(e) => setEditTitle(e.target.value)}
 									required
 								/>
 							</div>
 							<div>
-								<label className="block text-sm font-medium mb-1">Description</label>
+								<label className="field-label">Description</label>
 								<textarea
-									className="w-full border rounded px-3 py-2"
+									className="input"
 									value={editDesc}
 									onChange={(e) => setEditDesc(e.target.value)}
 									rows={3}
@@ -542,9 +542,9 @@ export default function QuotationsPage() {
 							</div>
 							<div className="grid grid-cols-2 gap-3">
 								<div>
-									<label className="block text-sm font-medium mb-1">Customer</label>
+									<label className="field-label">Customer</label>
 									<select
-										className="w-full border rounded px-3 py-2"
+										className="input"
 										value={editCustomerId}
 										onChange={(e) => setEditCustomerId(e.target.value)}
 									>
@@ -555,9 +555,9 @@ export default function QuotationsPage() {
 									</select>
 								</div>
 								<div>
-									<label className="block text-sm font-medium mb-1">Assignee</label>
+									<label className="field-label">Assignee</label>
 									<select
-										className="w-full border rounded px-3 py-2"
+										className="input"
 										value={editAssigneeId}
 										onChange={(e) => setEditAssigneeId(e.target.value)}
 									>
@@ -571,12 +571,12 @@ export default function QuotationsPage() {
 
 							{/* Category-specific fields */}
 							{editCustom?.category === "Rigid Boxes" && (
-								<div className="space-y-3 p-3 border border-gray-200 rounded bg-gray-50">
+								<div className="space-y-3 p-3 border border-line rounded-lg bg-wash">
 									<h3 className="font-medium text-sm">Rigid Box Specifications</h3>
 									
 									{/* Box Type - Radio buttons */}
 									<div>
-										<label className="block text-sm font-medium mb-2">Box Type</label>
+										<label className="field-label">Box Type</label>
 										<div className="space-y-2">
 											{["Lid & Base", "Magnetic", "Ribbon", "Book", "Custom"].map(type => (
 												<label key={type} className="flex items-center gap-2">
@@ -595,11 +595,11 @@ export default function QuotationsPage() {
 
 									{/* Size */}
 									<div>
-										<label className="block text-sm font-medium mb-2">Size</label>
+										<label className="field-label">Size</label>
 										<div className="flex items-center gap-2">
 											<input
 												type="text"
-												className="flex-1 border rounded px-3 py-2"
+												className="input flex-1 w-auto"
 												placeholder="Enter size"
 												value={editCustom?.size ?? ""}
 												onChange={e => setEditCustom({ ...editCustom, size: e.target.value })}
@@ -618,7 +618,7 @@ export default function QuotationsPage() {
 									{/* Top Outer */}
 									<input
 										type="text"
-										className="w-full border rounded px-3 py-2"
+										className="input"
 										placeholder="Top Outer"
 										value={editCustom?.topOuter ?? ""}
 										onChange={e => setEditCustom({ ...editCustom, topOuter: e.target.value })}
@@ -627,7 +627,7 @@ export default function QuotationsPage() {
 									{/* Top Inner */}
 									<input
 										type="text"
-										className="w-full border rounded px-3 py-2"
+										className="input"
 										placeholder="Top Inner"
 										value={editCustom?.topInner ?? ""}
 										onChange={e => setEditCustom({ ...editCustom, topInner: e.target.value })}
@@ -636,7 +636,7 @@ export default function QuotationsPage() {
 									{/* Bottom Outer */}
 									<input
 										type="text"
-										className="w-full border rounded px-3 py-2"
+										className="input"
 										placeholder="Bottom Outer"
 										value={editCustom?.bottomOuter ?? ""}
 										onChange={e => setEditCustom({ ...editCustom, bottomOuter: e.target.value })}
@@ -645,7 +645,7 @@ export default function QuotationsPage() {
 									{/* Bottom Inner */}
 									<input
 										type="text"
-										className="w-full border rounded px-3 py-2"
+										className="input"
 										placeholder="Bottom Inner"
 										value={editCustom?.bottomInner ?? ""}
 										onChange={e => setEditCustom({ ...editCustom, bottomInner: e.target.value })}
@@ -663,7 +663,7 @@ export default function QuotationsPage() {
 										</label>
 										{editCustom?.hasPartition && (
 											<textarea
-												className="w-full border rounded px-3 py-2 mt-2"
+												className="input mt-2"
 												placeholder="Partition description"
 												value={editCustom?.partitionDescription ?? ""}
 												onChange={e => setEditCustom({ ...editCustom, partitionDescription: e.target.value })}
@@ -674,14 +674,14 @@ export default function QuotationsPage() {
 							)}
 
 							{editCustom?.category === "Cake Boxes" && (
-								<div className="space-y-3 p-3 border border-gray-200 rounded bg-gray-50">
+								<div className="space-y-3 p-3 border border-line rounded-lg bg-wash">
 									<h3 className="font-medium text-sm">Cake Box Specifications</h3>
 									<div>
-										<label className="block text-sm font-medium mb-2">Size</label>
+										<label className="field-label">Size</label>
 										<div className="flex items-center gap-2">
 											<input
 												type="text"
-												className="flex-1 border rounded px-3 py-2"
+												className="input flex-1 w-auto"
 												placeholder="Enter size"
 												value={editCustom?.size ?? ""}
 												onChange={e => setEditCustom({ ...editCustom, size: e.target.value })}
@@ -708,7 +708,7 @@ export default function QuotationsPage() {
 										{editCustom?.hasWindow && (
 											<input
 												type="text"
-												className="w-full border rounded px-3 py-2 mt-2"
+												className="input mt-2"
 												placeholder="Window details"
 												value={editCustom?.windowDetails ?? ""}
 												onChange={e => setEditCustom({ ...editCustom, windowDetails: e.target.value })}
@@ -727,7 +727,7 @@ export default function QuotationsPage() {
 										{editCustom?.innerPrinting && (
 											<input
 												type="text"
-												className="w-full border rounded px-3 py-2 mt-2"
+												className="input mt-2"
 												placeholder="Inner printing details"
 												value={editCustom?.innerPrintingDetails ?? ""}
 												onChange={e => setEditCustom({ ...editCustom, innerPrintingDetails: e.target.value })}
@@ -738,14 +738,14 @@ export default function QuotationsPage() {
 							)}
 
 							{editCustom?.category === "Paper Bags" && (
-								<div className="space-y-3 p-3 border border-gray-200 rounded bg-gray-50">
+								<div className="space-y-3 p-3 border border-line rounded-lg bg-wash">
 									<h3 className="font-medium text-sm">Paper Bag Specifications</h3>
 									<div>
-										<label className="block text-sm font-medium mb-2">Size</label>
+										<label className="field-label">Size</label>
 										<div className="flex items-center gap-2">
 											<input
 												type="text"
-												className="flex-1 border rounded px-3 py-2"
+												className="input flex-1 w-auto"
 												placeholder="Enter size"
 												value={editCustom?.size ?? ""}
 												onChange={e => setEditCustom({ ...editCustom, size: e.target.value })}
@@ -772,7 +772,7 @@ export default function QuotationsPage() {
 										{editCustom?.innerPrinting && (
 											<input
 												type="text"
-												className="w-full border rounded px-3 py-2 mt-2"
+												className="input mt-2"
 												placeholder="Inner printing details"
 												value={editCustom?.innerPrintingDetails ?? ""}
 												onChange={e => setEditCustom({ ...editCustom, innerPrintingDetails: e.target.value })}
@@ -781,7 +781,7 @@ export default function QuotationsPage() {
 									</div>
 									<input
 										type="text"
-										className="w-full border rounded px-3 py-2"
+										className="input"
 										placeholder="Rope details"
 										value={editCustom?.rope ?? ""}
 										onChange={e => setEditCustom({ ...editCustom, rope: e.target.value })}
@@ -790,20 +790,20 @@ export default function QuotationsPage() {
 							)}
 
 							{editCustom?.category === "Stickers" && (
-								<div className="space-y-3 p-3 border border-gray-200 rounded bg-gray-50">
+								<div className="space-y-3 p-3 border border-line rounded-lg bg-wash">
 									<h3 className="font-medium text-sm">Sticker Specifications</h3>
 									<input
 										type="text"
-										className="w-full border rounded px-3 py-2"
+										className="input"
 										placeholder="Size"
 										value={editCustom?.size ?? ""}
 										onChange={e => setEditCustom({ ...editCustom, size: e.target.value })}
 									/>
 									<div className="grid grid-cols-2 gap-3">
 										<div>
-											<label className="block text-sm font-medium mb-1">Shape</label>
+											<label className="field-label">Shape</label>
 											<select
-												className="w-full border rounded px-3 py-2"
+												className="input"
 												value={editCustom?.shape ?? "Rectangle"}
 												onChange={e => setEditCustom({ ...editCustom, shape: e.target.value })}
 											>
@@ -813,9 +813,9 @@ export default function QuotationsPage() {
 											</select>
 										</div>
 										<div>
-											<label className="block text-sm font-medium mb-1">Material</label>
+											<label className="field-label">Material</label>
 											<select
-												className="w-full border rounded px-3 py-2"
+												className="input"
 												value={editCustom?.material ?? "Artsticker"}
 												onChange={e => setEditCustom({ ...editCustom, material: e.target.value })}
 											>
@@ -830,17 +830,17 @@ export default function QuotationsPage() {
 							)}
 
 							{editCustom?.category === "Cards" && (
-								<div className="space-y-3 p-3 border border-gray-200 rounded bg-gray-50">
+								<div className="space-y-3 p-3 border border-line rounded-lg bg-wash">
 									<h3 className="font-medium text-sm">Card Specifications</h3>
 									<input
 										type="text"
-										className="w-full border rounded px-3 py-2"
+										className="input"
 										placeholder="Size"
 										value={editCustom?.size ?? ""}
 										onChange={e => setEditCustom({ ...editCustom, size: e.target.value })}
 									/>
 									<div>
-										<label className="block text-sm font-medium mb-1">Sides</label>
+										<label className="field-label">Sides</label>
 										<div className="flex items-center gap-4">
 											<label className="flex items-center gap-2 text-sm">
 												<input
@@ -866,7 +866,7 @@ export default function QuotationsPage() {
 									</div>
 									<input
 										type="text"
-										className="w-full border rounded px-3 py-2"
+										className="input"
 										placeholder="Material"
 										value={editCustom?.material ?? ""}
 										onChange={e => setEditCustom({ ...editCustom, material: e.target.value })}
@@ -875,29 +875,29 @@ export default function QuotationsPage() {
 							)}
 
 							{editCustom?.category === "Invitation" && (
-								<div className="space-y-3 p-3 border border-gray-200 rounded bg-gray-50">
+								<div className="space-y-3 p-3 border border-line rounded-lg bg-wash">
 									<h3 className="font-medium text-sm">Invitation Specifications</h3>
 									<div>
-										<label className="block text-sm font-medium mb-2">Size</label>
+										<label className="field-label">Size</label>
 										<div className="flex items-center gap-2">
-											<input type="text" className="flex-1 border rounded px-3 py-2" placeholder="Enter size" value={editCustom?.size ?? ""} onChange={e => setEditCustom({ ...editCustom, size: e.target.value })} />
+											<input type="text" className="input flex-1 w-auto" placeholder="Enter size" value={editCustom?.size ?? ""} onChange={e => setEditCustom({ ...editCustom, size: e.target.value })} />
 											<label className="flex items-center gap-2 text-sm">
 												<input type="checkbox" checked={editCustom?.existingSize ?? false} onChange={e => setEditCustom({ ...editCustom, existingSize: e.target.checked })} />
 												Existing size
 											</label>
 										</div>
 									</div>
-									<input type="text" className="w-full border rounded px-3 py-2" placeholder="Material" value={editCustom?.material ?? ""} onChange={e => setEditCustom({ ...editCustom, material: e.target.value })} />
-									<input type="text" className="w-full border rounded px-3 py-2" placeholder="Envelope" value={editCustom?.envelope ?? ""} onChange={e => setEditCustom({ ...editCustom, envelope: e.target.value })} />
+									<input type="text" className="input" placeholder="Material" value={editCustom?.material ?? ""} onChange={e => setEditCustom({ ...editCustom, material: e.target.value })} />
+									<input type="text" className="input" placeholder="Envelope" value={editCustom?.envelope ?? ""} onChange={e => setEditCustom({ ...editCustom, envelope: e.target.value })} />
 								</div>
 							)}
 
 							{/* Category and Quantity fields */}
 							<div className="grid grid-cols-2 gap-3">
 								<div>
-									<label className="block text-sm font-medium mb-1">Category</label>
+									<label className="field-label">Category</label>
 									<select
-										className="w-full border rounded px-3 py-2"
+										className="input"
 										value={editCustom?.category ?? ""}
 										onChange={e => setEditCustom({ ...editCustom, category: e.target.value })}
 									>
@@ -911,10 +911,10 @@ export default function QuotationsPage() {
 									</select>
 								</div>
 								<div>
-									<label className="block text-sm font-medium mb-1">Quantity</label>
+									<label className="field-label">Quantity</label>
 									<input
 										type="number"
-										className="w-full border rounded px-3 py-2"
+										className="input"
 										placeholder="Quantity"
 										value={editCustom?.quantity ?? ""}
 										onChange={e => setEditCustom({ ...editCustom, quantity: e.target.valueAsNumber || "" })}
@@ -970,11 +970,11 @@ export default function QuotationsPage() {
 						<p className="text-sm text-gray-600 mb-4">Please provide start and due dates for the task:</p>
 						<div className="space-y-3">
 							<div>
-								<label className="block text-sm font-medium mb-1">Start Date</label>
+								<label className="field-label">Start Date</label>
 								<DateTimeSelector label="Start" value={convertStartAt} onChange={setConvertStartAt} />
 							</div>
 							<div>
-								<label className="block text-sm font-medium mb-1">Due Date</label>
+								<label className="field-label">Due Date</label>
 								<DateTimeSelector label="Due" value={convertDueAt} onChange={setConvertDueAt} />
 							</div>
 						</div>

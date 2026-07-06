@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { PageHeader, EmptyState, Spinner } from "@/components/ui";
 
 type AttendanceLog = {
   id: string;
@@ -9,13 +10,31 @@ type AttendanceLog = {
   location?: { name: string } | null;
 };
 
+function useElapsed(sinceIso: string | null) {
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    if (!sinceIso) return;
+    const t = setInterval(() => setTick((v) => v + 1), 1000);
+    return () => clearInterval(t);
+  }, [sinceIso]);
+  if (!sinceIso) return null;
+  const ms = Date.now() - new Date(sinceIso).getTime();
+  if (ms < 0) return "00:00:00";
+  const h = Math.floor(ms / 3600000);
+  const m = Math.floor((ms % 3600000) / 60000);
+  const s = Math.floor((ms % 60000) / 1000);
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
 export default function AttendancePage() {
   const [clockedIn, setClockedIn] = useState(false);
   const [openLog, setOpenLog] = useState<AttendanceLog | null>(null);
   const [recent, setRecent] = useState<AttendanceLog[]>([]);
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
+  const [message, setMessage] = useState<{ kind: "ok" | "warn" | "danger"; text: string } | null>(null);
   const [loading, setLoading] = useState(true);
+
+  const elapsed = useElapsed(clockedIn && openLog ? openLog.clockInAt : null);
 
   async function loadStatus() {
     const res = await fetch("/api/attendance/status");
@@ -35,7 +54,7 @@ export default function AttendancePage() {
   function getPosition(): Promise<GeolocationPosition> {
     return new Promise((resolve, reject) => {
       if (!navigator.geolocation) {
-        reject(new Error("Location is not available on this device/browser."));
+        reject(new Error("Location is not available on this device or browser."));
         return;
       }
       navigator.geolocation.getCurrentPosition(resolve, reject, {
@@ -60,17 +79,20 @@ export default function AttendancePage() {
       });
       const data = await res.json();
       if (!res.ok) {
-        setMessage(data.error || "Could not clock in.");
+        setMessage({ kind: "danger", text: data.error || "Couldn't clock in. Try again." });
       } else {
         setMessage(
           data.withinGeofence
-            ? `Clocked in at ${data.location ?? "an unrecognised location"}.`
-            : `Clocked in, but you're outside the expected radius for ${data.location ?? "this site"}. Flagged for review.`
+            ? { kind: "ok", text: `Clocked in at ${data.location ?? "an unrecognised location"}.` }
+            : { kind: "warn", text: `Clocked in, but you're outside the expected radius for ${data.location ?? "this site"}. Flagged for review.` }
         );
         await loadStatus();
       }
     } catch (err: any) {
-      setMessage(err.message || "Could not get your location. Enable location access and try again.");
+      setMessage({
+        kind: "danger",
+        text: err?.message || "Couldn't get your location. Enable location access and try again.",
+      });
     } finally {
       setBusy(false);
     }
@@ -85,7 +107,7 @@ export default function AttendancePage() {
         const pos = await getPosition();
         coords = { latitude: pos.coords.latitude, longitude: pos.coords.longitude };
       } catch {
-        // Clock-out still allowed without location; just skip it.
+        // Clock-out is still allowed without location.
       }
       const res = await fetch("/api/attendance/clock-out", {
         method: "POST",
@@ -94,9 +116,9 @@ export default function AttendancePage() {
       });
       const data = await res.json();
       if (!res.ok) {
-        setMessage(data.error || "Could not clock out.");
+        setMessage({ kind: "danger", text: data.error || "Couldn't clock out. Try again." });
       } else {
-        setMessage("Clocked out. See you next shift.");
+        setMessage({ kind: "ok", text: "Clocked out. See you next shift." });
         await loadStatus();
       }
     } finally {
@@ -104,75 +126,73 @@ export default function AttendancePage() {
     }
   }
 
-  if (loading) {
-    return <div className="text-center text-gray-500 py-12">Loading...</div>;
-  }
+  if (loading) return <Spinner />;
 
   return (
     <div className="max-w-md mx-auto">
-      <h1 className="text-2xl font-bold mb-6 text-center">Attendance</h1>
+      <PageHeader title="Attendance" />
 
-      <div className="rounded-2xl border p-6 text-center mb-6">
-        <div
-          className={`text-sm font-medium mb-2 ${clockedIn ? "text-green-600" : "text-gray-500"}`}
-        >
-          {clockedIn ? "● Clocked in" : "○ Not clocked in"}
-        </div>
+      <div
+        className="ticket p-6 text-center mb-6"
+        style={{ ["--ticket" as any]: clockedIn ? "var(--ok)" : "var(--line-strong)" }}
+      >
+        <span className={clockedIn ? "chip chip-ok" : "chip"}>
+          {clockedIn ? "ON SHIFT" : "OFF SHIFT"}
+        </span>
+
+        {clockedIn && elapsed && (
+          <div className="font-mono tabular-nums text-4xl font-semibold mt-4 tracking-tight">
+            {elapsed}
+          </div>
+        )}
         {openLog && (
-          <div className="text-xs text-gray-500 mb-4">
-            Since {new Date(openLog.clockInAt).toLocaleTimeString()}
+          <div className="meta mt-2 mb-5">
+            since {new Date(openLog.clockInAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
             {openLog.location?.name ? ` · ${openLog.location.name}` : ""}
           </div>
         )}
+        {!clockedIn && <div className="meta mt-2 mb-5">Uses your location to match the site</div>}
 
         {clockedIn ? (
-          <button
-            onClick={handleClockOut}
-            disabled={busy}
-            className="w-full py-4 rounded-xl bg-red-600 text-white font-semibold text-lg disabled:opacity-50"
-          >
-            {busy ? "..." : "Clock Out"}
+          <button onClick={handleClockOut} disabled={busy} className="btn btn-danger btn-lg btn-block">
+            {busy ? "Working…" : "Clock out"}
           </button>
         ) : (
-          <button
-            onClick={handleClockIn}
-            disabled={busy}
-            className="w-full py-4 rounded-xl bg-green-600 text-white font-semibold text-lg disabled:opacity-50"
-          >
-            {busy ? "..." : "Clock In"}
+          <button onClick={handleClockIn} disabled={busy} className="btn btn-accent btn-lg btn-block">
+            {busy ? "Getting location…" : "Clock in"}
           </button>
         )}
 
-        {message && <div className="text-sm text-gray-600 mt-4">{message}</div>}
+        {message && (
+          <div className={`alert alert-${message.kind} mt-4 text-left`}>{message.text}</div>
+        )}
       </div>
 
-      <h2 className="text-sm font-semibold text-gray-500 mb-2 uppercase tracking-wide">
-        Recent
-      </h2>
-      <div className="space-y-2">
-        {recent.length === 0 && (
-          <div className="text-sm text-gray-400">No attendance history yet.</div>
-        )}
-        {recent.map((log) => (
-          <div key={log.id} className="border rounded-lg p-3 text-sm flex justify-between">
-            <div>
-              <div className="font-medium">
-                {new Date(log.clockInAt).toLocaleDateString()}
+      <h2 className="nav-section !px-0 !mt-0 mb-2">Recent shifts</h2>
+      {recent.length === 0 ? (
+        <EmptyState title="No shifts yet" hint="Your clock-ins will show up here." />
+      ) : (
+        <div className="card divide-y divide-line">
+          {recent.map((log) => (
+            <div key={log.id} className="p-3.5 flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-sm font-medium">
+                  {new Date(log.clockInAt).toLocaleDateString(undefined, { weekday: "short", day: "2-digit", month: "short" })}
+                </div>
+                <div className="meta mt-0.5">
+                  {new Date(log.clockInAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                  {" – "}
+                  {log.clockOutAt
+                    ? new Date(log.clockOutAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+                    : "in progress"}
+                  {log.location?.name ? ` · ${log.location.name}` : ""}
+                </div>
               </div>
-              <div className="text-gray-500">
-                {new Date(log.clockInAt).toLocaleTimeString()} –{" "}
-                {log.clockOutAt ? new Date(log.clockOutAt).toLocaleTimeString() : "in progress"}
-              </div>
+              {!log.withinGeofence && <span className="chip chip-warn shrink-0">OFF-SITE</span>}
             </div>
-            <div className="text-right text-xs">
-              {log.location?.name && <div className="text-gray-500">{log.location.name}</div>}
-              {!log.withinGeofence && (
-                <div className="text-amber-600 font-medium">Outside geofence</div>
-              )}
-            </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

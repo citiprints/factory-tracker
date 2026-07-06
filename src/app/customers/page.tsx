@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useCurrentUser } from "../UserContext";
+import { PageHeader, EmptyState } from "@/components/ui";
 
 type Customer = { id: string; name: string; email?: string | null; phone?: string | null; company?: string | null; address?: string | null };
 
@@ -10,6 +11,8 @@ export default function CustomersPage() {
 
     const [customers, setCustomers] = useState<Customer[]>([]);
     const [loading, setLoading] = useState(true);
+    const [showForm, setShowForm] = useState(false);
+    const [search, setSearch] = useState("");
     const [name, setName] = useState("");
     const [email, setEmail] = useState("");
     const [phone, setPhone] = useState("");
@@ -34,13 +37,13 @@ export default function CustomersPage() {
             const res = await fetch("/api/customers");
             if (!res.ok) {
                 const json = await res.json().catch(() => ({}));
-                setError(json.error || "Failed to load customers");
+                setError(json.error || "Couldn't load customers.");
                 return;
             }
             const json = await res.json();
             setCustomers(json.customers ?? []);
         } catch {
-            setError("Failed to load customers. Check your connection and try again.");
+            setError("Couldn't load customers. Check your connection and try again.");
         } finally {
             setLoading(false);
         }
@@ -60,10 +63,11 @@ export default function CustomersPage() {
             });
             if (res.ok) {
                 setName(""); setEmail(""); setPhone(""); setCompany(""); setAddress("");
+                setShowForm(false);
                 load();
             } else {
                 const json = await res.json().catch(() => ({}));
-                setError(json.error || "Failed to create customer");
+                setError(json.error || "Couldn't add the customer.");
             }
         } finally {
             setCreating(false);
@@ -85,7 +89,7 @@ export default function CustomersPage() {
                 load();
             } else {
                 const json = await res.json().catch(() => ({}));
-                setRowError({ id, message: json.error || "Failed to save changes" });
+                setRowError({ id, message: json.error || "Couldn't save changes." });
             }
         } finally {
             setSaving(false);
@@ -100,94 +104,129 @@ export default function CustomersPage() {
             load();
         } else {
             const json = await res.json().catch(() => ({}));
-            setRowError({ id, message: json.error || "Failed to delete customer" });
+            setRowError({ id, message: json.error || "Couldn't delete the customer." });
         }
     }
 
+    const filtered = customers.filter((c) => {
+        if (!search.trim()) return true;
+        const q = search.toLowerCase();
+        return [c.name, c.email, c.phone, c.company].some((v) => v?.toLowerCase().includes(q));
+    });
+
     return (
-        <div className="grid gap-6 sm:grid-cols-2">
-            <section>
-                <h1 className="text-xl font-semibold mb-3">Add customer</h1>
-                <form onSubmit={onCreate} className="space-y-3">
-                    <input className="w-full border rounded px-3 py-2 bg-background" placeholder="Name" value={name} onChange={e => setName(e.target.value)} required />
-                    <input className="w-full border rounded px-3 py-2 bg-background" placeholder="Email" type="email" value={email} onChange={e => setEmail(e.target.value)} />
-                    <input className="w-full border rounded px-3 py-2 bg-background" placeholder="Phone" value={phone} onChange={e => setPhone(e.target.value)} />
-                    <input className="w-full border rounded px-3 py-2 bg-background" placeholder="Company" value={company} onChange={e => setCompany(e.target.value)} />
-                    <textarea className="w-full border rounded px-3 py-2 bg-background" placeholder="Address" value={address} onChange={e => setAddress(e.target.value)} />
-                    <button disabled={creating} className="rounded bg-gray-900 px-3 py-2 text-white disabled:opacity-50">
-                        {creating ? "Creating..." : "Create"}
+        <div className="max-w-3xl mx-auto space-y-5">
+            <PageHeader
+                title="Customers"
+                subtitle={`${customers.length} on record`}
+                actions={
+                    <button onClick={() => setShowForm((v) => !v)} className={showForm ? "btn btn-outline" : "btn btn-primary"}>
+                        {showForm ? "Cancel" : "+ Add customer"}
+                    </button>
+                }
+            />
+
+            {showForm && (
+                <form onSubmit={onCreate} className="card card-pad space-y-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div className="sm:col-span-2">
+                            <label className="field-label" htmlFor="c-name">Name</label>
+                            <input id="c-name" className="input" value={name} onChange={e => setName(e.target.value)} required />
+                        </div>
+                        <div>
+                            <label className="field-label" htmlFor="c-email">Email</label>
+                            <input id="c-email" className="input" type="email" value={email} onChange={e => setEmail(e.target.value)} />
+                        </div>
+                        <div>
+                            <label className="field-label" htmlFor="c-phone">Phone</label>
+                            <input id="c-phone" className="input" value={phone} onChange={e => setPhone(e.target.value)} />
+                        </div>
+                        <div className="sm:col-span-2">
+                            <label className="field-label" htmlFor="c-company">Company</label>
+                            <input id="c-company" className="input" value={company} onChange={e => setCompany(e.target.value)} />
+                        </div>
+                        <div className="sm:col-span-2">
+                            <label className="field-label" htmlFor="c-address">Address</label>
+                            <textarea id="c-address" className="input" value={address} onChange={e => setAddress(e.target.value)} />
+                        </div>
+                    </div>
+                    {error && <div className="alert alert-danger">{error}</div>}
+                    <button disabled={creating} className="btn btn-primary">
+                        {creating ? "Adding…" : "Add customer"}
                     </button>
                 </form>
-                {error && (
-                    <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mt-3">
-                        {error}
-                    </div>
-                )}
-            </section>
-            <section>
-                <h2 className="text-lg font-medium mb-2">Customers</h2>
+            )}
 
-                {loading ? (
-                    <div className="space-y-2">
-                        {[1, 2, 3].map((i) => (
-                            <div key={i} className="border rounded p-3 animate-pulse">
-                                <div className="h-4 bg-gray-200 rounded w-1/3 mb-2"></div>
-                                <div className="h-3 bg-gray-200 rounded w-2/3"></div>
-                            </div>
-                        ))}
-                    </div>
-                ) : customers.length === 0 ? (
-                    <p className="text-sm text-gray-500">No customers yet. Add one on the left.</p>
-                ) : (
-                    <ul className="space-y-2">
-                        {customers.map(c => (
-                            <li key={c.id} className="border rounded p-3">
-                                {editingId === c.id ? (
-                                    <form onSubmit={(e) => onSaveEdit(e, c.id)} className="space-y-2">
-                                        <input className="w-full border rounded px-3 py-2 bg-background" value={eName} onChange={e => setEName(e.target.value)} required />
-                                        <input className="w-full border rounded px-3 py-2 bg-background" value={eEmail} onChange={e => setEEmail(e.target.value)} />
-                                        <input className="w-full border rounded px-3 py-2 bg-background" value={ePhone} onChange={e => setEPhone(e.target.value)} />
-                                        <input className="w-full border rounded px-3 py-2 bg-background" value={eCompany} onChange={e => setECompany(e.target.value)} />
-                                        <textarea className="w-full border rounded px-3 py-2 bg-background" value={eAddress} onChange={e => setEAddress(e.target.value)} />
-                                        {rowError?.id === c.id && (
-                                            <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-                                                {rowError.message}
+            {!showForm && error && <div className="alert alert-danger">{error}</div>}
+
+            {customers.length > 3 && (
+                <input
+                    className="input"
+                    placeholder="Search by name, phone, email, company…"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                />
+            )}
+
+            {loading ? (
+                <div className="space-y-2.5">
+                    {[1, 2, 3].map((i) => (
+                        <div key={i} className="card p-4">
+                            <div className="skeleton h-4 w-1/3 mb-2" />
+                            <div className="skeleton h-3 w-2/3" />
+                        </div>
+                    ))}
+                </div>
+            ) : filtered.length === 0 ? (
+                <EmptyState
+                    title={search ? "No matches" : "No customers yet"}
+                    hint={search ? "Try a different search." : "Add your first customer to start attaching them to jobs."}
+                />
+            ) : (
+                <ul className="space-y-2.5">
+                    {filtered.map(c => (
+                        <li key={c.id} className="card p-4">
+                            {editingId === c.id ? (
+                                <form onSubmit={(e) => onSaveEdit(e, c.id)} className="space-y-3">
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                        <input className="input sm:col-span-2" value={eName} onChange={e => setEName(e.target.value)} placeholder="Name" required />
+                                        <input className="input" value={eEmail} onChange={e => setEEmail(e.target.value)} placeholder="Email" />
+                                        <input className="input" value={ePhone} onChange={e => setEPhone(e.target.value)} placeholder="Phone" />
+                                        <input className="input sm:col-span-2" value={eCompany} onChange={e => setECompany(e.target.value)} placeholder="Company" />
+                                        <textarea className="input sm:col-span-2" value={eAddress} onChange={e => setEAddress(e.target.value)} placeholder="Address" />
+                                    </div>
+                                    {rowError?.id === c.id && <div className="alert alert-danger">{rowError.message}</div>}
+                                    <div className="flex gap-2">
+                                        <button disabled={saving} className="btn btn-primary btn-sm" type="submit">
+                                            {saving ? "Saving…" : "Save changes"}
+                                        </button>
+                                        <button className="btn btn-ghost btn-sm" type="button" onClick={() => { setEditingId(null); setRowError(null); }}>Cancel</button>
+                                    </div>
+                                </form>
+                            ) : (
+                                <div>
+                                    <div className="flex items-start justify-between gap-3">
+                                        <div className="min-w-0">
+                                            <div className="font-medium truncate">{c.name}</div>
+                                            <div className="meta mt-0.5 truncate">
+                                                {[c.company, c.phone, c.email].filter(Boolean).join(" · ") || "No contact details"}
                                             </div>
-                                        )}
-                                        <div className="flex gap-2">
-                                            <button disabled={saving} className="btn rounded px-3 py-2 disabled:opacity-50" type="submit">
-                                                {saving ? "Saving..." : "Save"}
-                                            </button>
-                                            <button className="rounded border px-3 py-2" type="button" onClick={() => { setEditingId(null); setRowError(null); }}>Cancel</button>
+                                            {c.address && <div className="text-sm text-muted mt-1">{c.address}</div>}
                                         </div>
-                                    </form>
-                                ) : (
-                                    <div>
-                                        <div className="flex items-center justify-between gap-2">
-                                            <div className="min-w-0">
-                                                <div className="font-medium truncate">{c.name}</div>
-                                                <div className="text-xs text-gray-600 truncate">{c.email || ""} {c.phone ? `• ${c.phone}` : ""} {c.company ? `• ${c.company}` : ""}</div>
-                                                {c.address && <div className="text-xs text-gray-600">{c.address}</div>}
-                                            </div>
-                                            {isAdmin && (
-                                                <div className="flex items-center gap-2 text-xs flex-shrink-0">
-                                                    <button type="button" className="rounded border px-3 py-1" onClick={() => { setEditingId(c.id); setRowError(null); setEName(c.name); setEEmail(c.email || ""); setEPhone(c.phone || ""); setECompany(c.company || ""); setEAddress(c.address || ""); }}>Edit</button>
-                                                    <button type="button" className="rounded border px-3 py-1 text-red-700 hover:bg-red-50" onClick={() => onDelete(c.id)}>Delete</button>
-                                                </div>
-                                            )}
-                                        </div>
-                                        {rowError?.id === c.id && (
-                                            <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mt-2">
-                                                {rowError.message}
+                                        {isAdmin && (
+                                            <div className="flex items-center gap-2 shrink-0">
+                                                <button type="button" className="btn btn-outline btn-sm" onClick={() => { setEditingId(c.id); setRowError(null); setEName(c.name); setEEmail(c.email || ""); setEPhone(c.phone || ""); setECompany(c.company || ""); setEAddress(c.address || ""); }}>Edit</button>
+                                                <button type="button" className="btn btn-danger-outline btn-sm" onClick={() => onDelete(c.id)}>Delete</button>
                                             </div>
                                         )}
                                     </div>
-                                )}
-                            </li>
-                        ))}
-                    </ul>
-                )}
-            </section>
+                                    {rowError?.id === c.id && <div className="alert alert-danger mt-2">{rowError.message}</div>}
+                                </div>
+                            )}
+                        </li>
+                    ))}
+                </ul>
+            )}
         </div>
     );
 }

@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useCurrentUser } from "../UserContext";
+import { PageHeader, EmptyState } from "@/components/ui";
 
 type User = {
 	id: string;
@@ -11,6 +12,17 @@ type User = {
 	active: boolean;
 	createdAt: string;
 };
+
+function roleChip(role: string) {
+	switch (role) {
+		case "ADMIN":
+			return "chip chip-danger chip-plain";
+		case "MANAGER":
+			return "chip chip-info chip-plain";
+		default:
+			return "chip chip-plain";
+	}
+}
 
 export default function UsersPage() {
 	const currentUser = useCurrentUser();
@@ -25,9 +37,6 @@ export default function UsersPage() {
 	const [error, setError] = useState<string | null>(null);
 	const router = useRouter();
 
-	// The user is already known synchronously (resolved server-side in
-	// layout.tsx) -- no fetch, no flash of the page before redirecting
-	// a non-admin away.
 	useEffect(() => {
 		if (currentUser && !isAdmin) {
 			router.push("/dashboard");
@@ -43,11 +52,8 @@ export default function UsersPage() {
 	}
 
 	useEffect(() => {
-		if (isAdmin) {
-			load();
-		}
+		if (isAdmin) load();
 	}, [isAdmin]);
-
 
 	async function onUpdate(userId: string) {
 		setLoading(true);
@@ -55,17 +61,12 @@ export default function UsersPage() {
 		const res = await fetch(`/api/users/${userId}`, {
 			method: "PATCH",
 			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({
-				name: editName,
-				email: editEmail,
-				role: editRole,
-				active: editActive
-			})
+			body: JSON.stringify({ name: editName, email: editEmail, role: editRole, active: editActive }),
 		});
 		setLoading(false);
 		if (!res.ok) {
 			const json = await res.json().catch(() => ({}));
-			setError(json.error ?? "Failed to update user");
+			setError(json.error ?? "Couldn't update the user.");
 			return;
 		}
 		setEditingId(null);
@@ -73,168 +74,110 @@ export default function UsersPage() {
 	}
 
 	async function onDelete(userId: string) {
-		if (!confirm("Are you sure you want to delete this user?")) return;
+		if (!confirm("Delete this user? Their tasks and attendance history stay, but they won't be able to sign in.")) return;
 		setLoading(true);
 		setError(null);
-		const res = await fetch(`/api/users/${userId}`, {
-			method: "DELETE"
-		});
+		const res = await fetch(`/api/users/${userId}`, { method: "DELETE" });
 		setLoading(false);
 		if (!res.ok) {
 			const json = await res.json().catch(() => ({}));
-			setError(json.error ?? "Failed to delete user");
+			setError(json.error ?? "Couldn't delete the user.");
 			return;
 		}
 		load();
 	}
 
-	// Show loading or redirect if not admin
 	if (!currentUser || currentUser.role !== "ADMIN") {
 		return (
-			<div className="flex items-center justify-center min-h-screen">
-				<div className="text-center">
-					<h1 className="text-2xl font-semibold mb-4">Access Denied</h1>
-					<p className="text-gray-600">Only administrators can access this page.</p>
-				</div>
-			</div>
+			<EmptyState title="Admins only" hint="Only administrators can manage the team." />
 		);
 	}
 
 	return (
-		<div className="space-y-6">
-			<div className="flex items-center justify-between">
-				<h1 className="text-2xl font-semibold">User Management</h1>
-			</div>
-			
-			{error && <p className="text-sm text-red-600">{error}</p>}
-			
-			<div className="overflow-x-auto">
-				<table className="w-full border-collapse border">
-					<thead>
-						<tr className="bg-gray-50">
-							<th className="border p-3 text-left">Name</th>
-							<th className="border p-3 text-left">Email</th>
-							<th className="border p-3 text-left">Role</th>
-							<th className="border p-3 text-left">Status</th>
-							<th className="border p-3 text-left">Created</th>
-							<th className="border p-3 text-left">Actions</th>
-						</tr>
-					</thead>
-					<tbody>
-						{users.map(user => (
-							<tr key={user.id} className="hover:bg-gray-50">
-								{editingId === user.id ? (
-									<>
-										<td className="border p-3">
-											<input
-												className="w-full border rounded px-2 py-1"
-												value={editName}
-												onChange={e => setEditName(e.target.value)}
-											/>
-										</td>
-										<td className="border p-3">
-											<input
-												className="w-full border rounded px-2 py-1"
-												value={editEmail}
-												onChange={e => setEditEmail(e.target.value)}
-											/>
-										</td>
-										<td className="border p-3">
-											<select
-												className="w-full border rounded px-2 py-1"
-												value={editRole}
-												onChange={e => setEditRole(e.target.value)}
-											>
+		<div className="space-y-5">
+			<PageHeader title="Team" subtitle={`${users.length} member${users.length === 1 ? "" : "s"} · roles and access`} />
+
+			{error && <div className="alert alert-danger">{error}</div>}
+
+			{users.length === 0 ? (
+				<EmptyState title="No team members yet" hint="New sign-ups will appear here." />
+			) : (
+				<div className="grid gap-2.5">
+					{users.map((user) => (
+						<div key={user.id} className="card p-4">
+							{editingId === user.id ? (
+								<div className="space-y-4">
+									<div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+										<div>
+											<label className="field-label">Name</label>
+											<input className="input" value={editName} onChange={(e) => setEditName(e.target.value)} />
+										</div>
+										<div>
+											<label className="field-label">Email</label>
+											<input className="input" value={editEmail} onChange={(e) => setEditEmail(e.target.value)} />
+										</div>
+										<div>
+											<label className="field-label">Role</label>
+											<select className="input" value={editRole} onChange={(e) => setEditRole(e.target.value)}>
 												<option value="WORKER">Worker</option>
 												<option value="MANAGER">Manager</option>
 												<option value="ADMIN">Admin</option>
 											</select>
-										</td>
-										<td className="border p-3">
-											<label className="flex items-center gap-2">
-												<input
-													type="checkbox"
-													checked={editActive}
-													onChange={e => setEditActive(e.target.checked)}
-												/>
-												Active
+										</div>
+										<div className="flex items-end pb-1.5">
+											<label className="flex items-center gap-2 text-sm font-medium cursor-pointer">
+												<input type="checkbox" className="w-4 h-4 accent-[var(--accent)]" checked={editActive} onChange={(e) => setEditActive(e.target.checked)} />
+												Can sign in (active)
 											</label>
-										</td>
-										<td className="border p-3 text-sm text-gray-600">
-											{new Date(user.createdAt).toLocaleDateString()}
-										</td>
-										<td className="border p-3">
-											<div className="flex gap-2">
-												<button
-													className="px-3 py-1 bg-green-600 text-white rounded text-sm"
-													onClick={() => onUpdate(user.id)}
-													disabled={loading}
-												>
-													Save
-												</button>
-												<button
-													className="px-3 py-1 bg-gray-600 text-white rounded text-sm"
-													onClick={() => setEditingId(null)}
-													disabled={loading}
-												>
-													Cancel
-												</button>
-											</div>
-										</td>
-									</>
-								) : (
-									<>
-										<td className="border p-3 font-medium">{user.name}</td>
-										<td className="border p-3">{user.email}</td>
-										<td className="border p-3">
-											<span className={`px-2 py-1 rounded text-xs ${
-												user.role === 'ADMIN' ? 'bg-red-100 text-red-800' :
-												user.role === 'MANAGER' ? 'bg-blue-100 text-blue-800' :
-												'bg-gray-100 text-gray-800'
-											}`}>
-												{user.role}
-											</span>
-										</td>
-										<td className="border p-3">
-											<span className={`px-2 py-1 rounded text-xs ${
-												user.active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-											}`}>
-												{user.active ? 'Active' : 'Inactive'}
-											</span>
-										</td>
-										<td className="border p-3 text-sm text-gray-600">
-											{new Date(user.createdAt).toLocaleDateString()}
-										</td>
-										<td className="border p-3">
-											<div className="flex gap-2">
-												<button
-													className="px-3 py-1 bg-blue-600 text-white rounded text-sm"
-													onClick={() => {
-														setEditingId(user.id);
-														setEditName(user.name);
-														setEditEmail(user.email);
-														setEditRole(user.role);
-														setEditActive(user.active);
-													}}
-												>
-													Edit
-												</button>
-												<button
-													className="px-3 py-1 bg-red-600 text-white rounded text-sm"
-													onClick={() => onDelete(user.id)}
-													disabled={loading}
-												>
-													Delete
-												</button>
-											</div>
-										</td>
-									</>
-								)}
-							</tr>
-						))}
-					</tbody>
-				</table>
-			</div>
+										</div>
+									</div>
+									<div className="flex gap-2">
+										<button className="btn btn-primary btn-sm" onClick={() => onUpdate(user.id)} disabled={loading}>
+											{loading ? "Saving…" : "Save changes"}
+										</button>
+										<button className="btn btn-ghost btn-sm" onClick={() => setEditingId(null)} disabled={loading}>
+											Cancel
+										</button>
+									</div>
+								</div>
+							) : (
+								<div className="flex flex-wrap items-center gap-3">
+									<div className="w-9 h-9 rounded-full bg-accent-soft text-accent flex items-center justify-center font-semibold shrink-0">
+										{user.name?.charAt(0).toUpperCase() || "?"}
+									</div>
+									<div className="min-w-0 flex-1">
+										<div className="flex flex-wrap items-center gap-2">
+											<span className="font-medium">{user.name}</span>
+											<span className={roleChip(user.role)}>{user.role}</span>
+											{!user.active && <span className="chip chip-danger">DISABLED</span>}
+										</div>
+										<div className="meta mt-0.5 truncate">
+											{user.email} · joined {new Date(user.createdAt).toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric" })}
+										</div>
+									</div>
+									<div className="flex gap-2 shrink-0">
+										<button
+											className="btn btn-outline btn-sm"
+											onClick={() => {
+												setEditingId(user.id);
+												setEditName(user.name);
+												setEditEmail(user.email);
+												setEditRole(user.role);
+												setEditActive(user.active);
+											}}
+										>
+											Edit
+										</button>
+										<button className="btn btn-danger-outline btn-sm" onClick={() => onDelete(user.id)} disabled={loading}>
+											Delete
+										</button>
+									</div>
+								</div>
+							)}
+						</div>
+					))}
+				</div>
+			)}
 		</div>
 	);
 }
