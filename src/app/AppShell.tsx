@@ -165,30 +165,50 @@ function BrandMark() {
 /* ------------------------------------------------------------------ */
 function PushToggle({ compact = false }: { compact?: boolean }) {
   const [status, setStatus] = useState<"unknown" | "off" | "on" | "denied" | "busy" | "unsupported">("unknown");
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (typeof window === "undefined" || !("Notification" in window)) {
       setStatus("unsupported");
       return;
     }
-    setStatus(Notification.permission === "granted" ? "on" : Notification.permission === "denied" ? "denied" : "off");
+    if (Notification.permission === "denied") {
+      setStatus("denied");
+      return;
+    }
+    // Permission alone doesn't prove a subscription exists — only hide the
+    // button once THIS browser has actually completed a successful POST to
+    // /api/push/subscribe. Otherwise keep it tappable, even if permission
+    // was already granted (e.g. from an earlier interrupted attempt).
+    const subscribed = localStorage.getItem("pushSubscribed") === "1";
+    setStatus(subscribed ? "on" : "off");
   }, []);
 
   async function enable() {
     setStatus("busy");
-    const token = await requestPushToken();
-    if (!token) {
+    setError(null);
+    const result = await requestPushToken();
+    if (!result.token) {
+      setError(result.reason ?? "Couldn't get a push token.");
       setStatus(Notification.permission === "denied" ? "denied" : "off");
       return;
     }
     try {
-      await fetch("/api/push/subscribe", {
+      const res = await fetch("/api/push/subscribe", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ fcmToken: token, device: "web" }),
+        body: JSON.stringify({ fcmToken: result.token, device: "web" }),
       });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        setError(body.error || `Server rejected the subscription (${res.status}).`);
+        setStatus("off");
+        return;
+      }
+      localStorage.setItem("pushSubscribed", "1");
       setStatus("on");
-    } catch {
+    } catch (err: any) {
+      setError(`Couldn't reach the server: ${err?.message || err}`);
       setStatus("off");
     }
   }
@@ -196,22 +216,27 @@ function PushToggle({ compact = false }: { compact?: boolean }) {
   if (status === "unsupported" || status === "on") return null; // nothing to do
 
   return (
-    <button
-      type="button"
-      onClick={enable}
-      disabled={status === "busy" || status === "denied"}
-      className="btn btn-ghost btn-sm"
-      title={
-        status === "denied"
-          ? "Notifications blocked — enable them in your browser's site settings"
-          : "Turn on notifications for assigned tasks and shifts"
-      }
-    >
-      <span className="w-[18px] h-[18px] inline-block">
-        <Icon d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0" />
-      </span>
-      {!compact && (status === "busy" ? "Enabling…" : status === "denied" ? "Blocked" : "Enable alerts")}
-    </button>
+    <div className={compact ? undefined : "w-full"}>
+      <button
+        type="button"
+        onClick={enable}
+        disabled={status === "busy" || status === "denied"}
+        className={compact ? "btn btn-ghost btn-sm" : "btn btn-ghost btn-sm btn-block"}
+        title={
+          status === "denied"
+            ? "Notifications blocked — enable them in your browser's site settings"
+            : "Turn on notifications for assigned tasks and shifts"
+        }
+      >
+        <span className="w-[18px] h-[18px] inline-block">
+          <Icon d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0" />
+        </span>
+        {!compact && (status === "busy" ? "Enabling…" : status === "denied" ? "Blocked" : "Enable alerts")}
+      </button>
+      {error && !compact && (
+        <p className="text-xs text-danger mt-1 px-1 leading-snug">{error}</p>
+      )}
+    </div>
   );
 }
 

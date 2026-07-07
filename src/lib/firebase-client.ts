@@ -17,35 +17,54 @@ function firebaseApp() {
 	return getApps().length ? getApp() : initializeApp(firebaseConfig);
 }
 
+export type PushTokenResult =
+	| { token: string; reason?: undefined }
+	| { token: null; reason: string };
+
 /**
  * Registers the service worker, requests notification permission, and
- * returns an FCM token — or null if push isn't configured/supported/granted.
- * Safe to call repeatedly; it's a no-op once already subscribed this session.
+ * returns an FCM token. On any failure, `reason` explains exactly where it
+ * stopped — surfaced in the UI so failures are never silent again.
  */
-export async function requestPushToken(): Promise<string | null> {
+export async function requestPushToken(): Promise<PushTokenResult> {
+	if (typeof window === "undefined") return { token: null, reason: "Not running in a browser." };
+	if (!("serviceWorker" in navigator)) return { token: null, reason: "This browser doesn't support background notifications." };
+	if (!("Notification" in window)) return { token: null, reason: "This browser doesn't support notifications." };
+
+	const app = firebaseApp();
+	if (!app) return { token: null, reason: "Push isn't configured yet (missing Firebase settings)." };
+
+	const supported = await isSupported().catch(() => false);
+	if (!supported) return { token: null, reason: "This browser doesn't support Firebase push messaging." };
+
+	let permission: NotificationPermission;
 	try {
-		if (typeof window === "undefined") return null;
-		if (!("serviceWorker" in navigator) || !("Notification" in window)) return null;
+		permission = await Notification.requestPermission();
+	} catch (err: any) {
+		return { token: null, reason: `Permission request failed: ${err?.message || err}` };
+	}
+	if (permission !== "granted") {
+		return { token: null, reason: permission === "denied" ? "Notifications blocked in browser settings." : "Permission dismissed." };
+	}
 
-		const app = firebaseApp();
-		if (!app) return null; // Firebase env vars not set — feature stays dormant
+	let registration: ServiceWorkerRegistration;
+	try {
+		registration = await navigator.serviceWorker.register("/firebase-messaging-sw.js");
+		await navigator.serviceWorker.ready;
+	} catch (err: any) {
+		return { token: null, reason: `Service worker registration failed: ${err?.message || err}` };
+	}
 
-		const supported = await isSupported().catch(() => false);
-		if (!supported) return null;
-
-		const permission = await Notification.requestPermission();
-		if (permission !== "granted") return null;
-
-		const registration = await navigator.serviceWorker.register("/firebase-messaging-sw.js");
+	try {
 		const messaging = getMessaging(app);
 		const token = await getToken(messaging, {
 			vapidKey: process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY,
 			serviceWorkerRegistration: registration,
 		});
-		return token || null;
-	} catch (err) {
-		console.error("Push registration failed (non-fatal):", err);
-		return null;
+		if (!token) return { token: null, reason: "Firebase returned no token." };
+		return { token };
+	} catch (err: any) {
+		return { token: null, reason: `Couldn't get a push token: ${err?.message || err}` };
 	}
 }
 
