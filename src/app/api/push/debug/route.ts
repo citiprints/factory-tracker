@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getCurrentUser, isAdmin } from "@/lib/session";
 import { firebaseAdminApp } from "@/lib/firebase-admin";
 import { getMessaging } from "firebase-admin/messaging";
+import { prisma } from "@/lib/db";
 
 // Temporary diagnostic route — safe to delete once push notifications are
 // confirmed working. Reports config presence and an actual auth check
@@ -20,32 +21,49 @@ export async function GET() {
 		FIREBASE_PROJECT_ID_VALUE: process.env.FIREBASE_PROJECT_ID || null, // not secret, safe to echo
 	};
 
+	// Every token currently on file for THIS user (across all their devices).
+	const mySubs = await prisma.pushSubscription.findMany({
+		where: { userId: user.id },
+		orderBy: { createdAt: "desc" },
+	});
+
 	const app = firebaseAdminApp();
 	if (!app) {
 		return NextResponse.json({
 			configured: false,
 			envPresence,
+			mySubscriptionCount: mySubs.length,
 			note: "firebaseAdminApp() returned null — one of the three FIREBASE_* server vars is missing.",
 		});
 	}
 
-	// Try an actual send to a garbage token. We expect Google to reject the
-	// TOKEN (not the credentials) — that failure mode proves auth succeeded.
-	// Any error about credentials/auth/project instead tells us the real problem.
-	try {
-		await getMessaging(app).send(
-			{ token: "diagnostic-invalid-token-0000", notification: { title: "x", body: "x" } },
-			true // dryRun — never actually delivered even if the token were real
-		);
-		return NextResponse.json({ configured: true, envPresence, authCheck: "unexpected success (dry run)" });
-	} catch (err: any) {
-		return NextResponse.json({
-			configured: true,
-			envPresence,
-			authCheck: {
-				code: err?.code || null,
-				message: err?.message || String(err),
-			},
-		});
-	}
+	// Real per-token dry-run check: for each token on file, ask Google whether
+	// it's a live, valid registration — without delivering anything.
+	const messaging = getMessaging(app);
+	const tokenChecks = await Promise.all(
+		mySubs.map(async (sub) => {
+			try {
+				await messaging.send(
+					{ token: sub.fcmToken, notification: { title: "diagnostic", body: "diagnostic" } },
+					true // dryRun
+				);
+				return { device: sub.device, createdAt: sub.createdAt, tokenPrefix: sub.fcmToken.slice(0, 12), valid: true };
+			} catch (err: any) {
+				return {
+					device: sub.device,
+					createdAt: sub.createdAt,
+					tokenPrefix: sub.fcmToken.slice(0, 12),
+					valid: false,
+					error: err?.code || err?.message || String(err),
+				};
+			}
+		})
+	);
+
+	return NextResponse.json({
+		configured: true,
+		envPresence,
+		mySubscriptionCount: mySubs.length,
+		tokenChecks,
+	});
 }
