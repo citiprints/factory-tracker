@@ -176,11 +176,11 @@ function PushToggle({ compact = false }: { compact?: boolean }) {
       setStatus("denied");
       return;
     }
-    // Permission alone doesn't prove a subscription exists — only hide the
-    // button once THIS browser has actually completed a successful POST to
-    // /api/push/subscribe. Otherwise keep it tappable, even if permission
-    // was already granted (e.g. from an earlier interrupted attempt).
-    const subscribed = localStorage.getItem("pushSubscribed") === "1";
+    // The saved "subscribed" flag only counts while permission is CURRENTLY
+    // granted. If the person reset/revoked permission at the OS or browser
+    // level after subscribing, the flag goes stale — trusting it alone would
+    // hide the button while notifications are actually off again.
+    const subscribed = Notification.permission === "granted" && localStorage.getItem("pushSubscribed") === "1";
     setStatus(subscribed ? "on" : "off");
   }, []);
 
