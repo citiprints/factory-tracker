@@ -3,6 +3,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import type { SafeUser } from "@/lib/session";
+import { requestPushToken, onForegroundPush } from "@/lib/firebase-client";
 
 /* ------------------------------------------------------------------ */
 /* Icons — small inline set, stroke inherits currentColor              */
@@ -158,6 +159,63 @@ function BrandMark() {
 }
 
 /* ------------------------------------------------------------------ */
+/* Push notification opt-in — a deliberate tap, never an auto-prompt   */
+/* (browsers silently ignore permission requests without a user        */
+/* gesture, and an unsolicited popup on load is just annoying).        */
+/* ------------------------------------------------------------------ */
+function PushToggle({ compact = false }: { compact?: boolean }) {
+  const [status, setStatus] = useState<"unknown" | "off" | "on" | "denied" | "busy" | "unsupported">("unknown");
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !("Notification" in window)) {
+      setStatus("unsupported");
+      return;
+    }
+    setStatus(Notification.permission === "granted" ? "on" : Notification.permission === "denied" ? "denied" : "off");
+  }, []);
+
+  async function enable() {
+    setStatus("busy");
+    const token = await requestPushToken();
+    if (!token) {
+      setStatus(Notification.permission === "denied" ? "denied" : "off");
+      return;
+    }
+    try {
+      await fetch("/api/push/subscribe", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ fcmToken: token, device: "web" }),
+      });
+      setStatus("on");
+    } catch {
+      setStatus("off");
+    }
+  }
+
+  if (status === "unsupported" || status === "on") return null; // nothing to do
+
+  return (
+    <button
+      type="button"
+      onClick={enable}
+      disabled={status === "busy" || status === "denied"}
+      className="btn btn-ghost btn-sm"
+      title={
+        status === "denied"
+          ? "Notifications blocked — enable them in your browser's site settings"
+          : "Turn on notifications for assigned tasks and shifts"
+      }
+    >
+      <span className="w-[18px] h-[18px] inline-block">
+        <Icon d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0" />
+      </span>
+      {!compact && (status === "busy" ? "Enabling…" : status === "denied" ? "Blocked" : "Enable alerts")}
+    </button>
+  );
+}
+
+
 export default function AppShell({
   user,
   children,
@@ -168,6 +226,24 @@ export default function AppShell({
   const pathname = usePathname();
   const [loggingOut, setLoggingOut] = useState(false);
   const [counts, setCounts] = useState<{ pendingTasks: number; pendingQuotes: number } | null>(null);
+  const [toast, setToast] = useState<{ title: string; body: string; linkPath?: string } | null>(null);
+
+  // Foreground push: FCM's onBackgroundMessage only fires when the tab is
+  // NOT focused, so we need our own listener for the active-tab case.
+  useEffect(() => {
+    if (!user) return;
+    let toastTimer: ReturnType<typeof setTimeout>;
+    onForegroundPush((title, body, linkPath) => {
+      setToast({ title, body, linkPath });
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => setToast(null), 6000);
+      fetch("/api/counts")
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => d && setCounts(d))
+        .catch(() => {});
+    });
+    return () => clearTimeout(toastTimer);
+  }, [user]);
 
   // Nav badges: refresh on every navigation so counts stay honest.
   useEffect(() => {
@@ -279,6 +355,9 @@ export default function AppShell({
             </div>
             <ThemeToggle />
           </div>
+          <div className="mb-2">
+            <PushToggle />
+          </div>
           <button
             onClick={handleLogout}
             disabled={loggingOut}
@@ -301,6 +380,7 @@ export default function AppShell({
             Factory Tracker
           </Link>
           <div className="flex items-center gap-1">
+            <PushToggle compact />
             <ThemeToggle />
             <button
               onClick={handleLogout}
@@ -319,6 +399,18 @@ export default function AppShell({
         <main className="flex-1 w-full max-w-6xl mx-auto px-4 md:px-8 py-5 md:py-8 pb-24 md:pb-8">
           {children}
         </main>
+
+        {toast && (
+          <button
+            onClick={() => {
+              window.location.href = toast.linkPath || "/dashboard";
+            }}
+            className="fixed z-30 left-3 right-3 bottom-[4.75rem] md:left-auto md:right-6 md:bottom-6 md:w-80 card card-pad !bg-[var(--raised)] shadow-lg text-left"
+          >
+            <div className="font-medium text-sm">{toast.title}</div>
+            <div className="text-sm text-muted mt-0.5">{toast.body}</div>
+          </button>
+        )}
 
         {/* Mobile bottom tab bar — big targets for the factory floor */}
         <nav

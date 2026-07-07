@@ -1,4 +1,6 @@
 import { prisma } from "@/lib/db";
+import { firebaseAdminApp } from "@/lib/firebase-admin";
+import { getMessaging } from "firebase-admin/messaging";
 
 type NotifyInput = {
   userId: string;
@@ -23,20 +25,37 @@ export async function notifyUser({ userId, title, body, type = "GENERAL", linkPa
 }
 
 async function sendPushBestEffort(userId: string, title: string, body: string, linkPath?: string) {
-  if (!process.env.FIREBASE_PROJECT_ID) return; // FCM not configured yet — no-op
+  const app = firebaseAdminApp();
+  if (!app) return; // FCM not configured yet — no-op
 
   const subs = await prisma.pushSubscription.findMany({ where: { userId } });
   if (subs.length === 0) return;
 
-  // NOTE: wire up firebase-admin here once FIREBASE_* env vars are set.
-  // Left as a stub so the rest of the notification flow works end-to-end
-  // (in-app notifications + shift/task assignment) before push is configured.
-  //
-  // Example once ready:
-  //   import { getMessaging } from "firebase-admin/messaging";
-  //   await getMessaging().sendEachForMulticast({
-  //     tokens: subs.map(s => s.fcmToken),
-  //     notification: { title, body },
-  //     data: linkPath ? { linkPath } : undefined,
-  //   });
+  const tokens = subs.map((s: { fcmToken: string }) => s.fcmToken);
+  const res = await getMessaging(app).sendEachForMulticast({
+    tokens,
+    notification: { title, body },
+    data: linkPath ? { linkPath } : undefined,
+    webpush: {
+      fcmOptions: linkPath ? { link: linkPath } : undefined,
+      notification: { icon: "/icon-192.png" },
+    },
+  });
+
+  // Tokens that are unregistered/invalid never recover — drop them so we
+  // stop retrying against a device that's gone.
+  const dead = res.responses
+    .map((r, i) => (!r.success && isDeadTokenError(r.error?.code) ? tokens[i] : null))
+    .filter((t): t is string => !!t);
+
+  if (dead.length > 0) {
+    await prisma.pushSubscription.deleteMany({ where: { fcmToken: { in: dead } } });
+  }
+}
+
+function isDeadTokenError(code?: string) {
+  return (
+    code === "messaging/registration-token-not-registered" ||
+    code === "messaging/invalid-registration-token"
+  );
 }
