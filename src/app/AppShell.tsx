@@ -70,7 +70,7 @@ const ADMIN_NAV: NavSection[] = [
     title: "Manage",
     items: [
       { href: "/users", label: "Team", icon: "people" },
-      { href: "/custom-fields", label: "Custom fields", icon: "fields" },
+      { href: "/settings", label: "Settings", icon: "fields" },
       { href: "/files", label: "Files", icon: "files" },
       { href: "/archive", label: "Archive", icon: "archive" },
     ],
@@ -86,6 +86,7 @@ const WORKER_NAV: NavSection[] = [
       { href: "/tasks", label: "My tasks", icon: "tasks" },
       { href: "/attendance", label: "Clock in / out", icon: "clock" },
       { href: "/schedule", label: "My shifts", icon: "calendar" },
+      { href: "/settings", label: "Settings", icon: "fields" },
     ],
   },
 ];
@@ -384,7 +385,6 @@ export default function AppShell({
               <div className="text-sm font-medium truncate">{user.name}</div>
               <div className="meta capitalize">{user.role.toLowerCase()}</div>
             </div>
-            <ThemeToggle />
           </div>
           <div className="mb-2">
             <PushToggle />
@@ -412,7 +412,6 @@ export default function AppShell({
           </Link>
           <div className="flex items-center gap-1">
             <PushToggle compact />
-            <ThemeToggle />
             <button
               onClick={handleLogout}
               disabled={loggingOut}

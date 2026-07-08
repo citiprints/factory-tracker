@@ -24,7 +24,7 @@ export const metadata = {
 
 // Runs before first paint: restores the saved theme (or falls back to the
 // OS preference) so there is no flash and the toggle state survives reloads.
-const themeInit = `(function(){try{var t=localStorage.getItem("theme");if(t!=="light"&&t!=="dark"){t=window.matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light"}document.documentElement.setAttribute("data-theme",t)}catch(e){document.documentElement.setAttribute("data-theme","light")}})();`;
+const themeInit = `(function(){try{var t=localStorage.getItem("theme");document.documentElement.setAttribute("data-theme",t==="dark"?"dark":"light")}catch(e){document.documentElement.setAttribute("data-theme","light")}})();`;
 
 export default async function RootLayout({
   children,

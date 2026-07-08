@@ -20,6 +20,7 @@ type Task = {
 	jobNumber?: string | null;
 	customFields?: any;
 	assignments?: { id: string; user: { id: string; name: string }; role: string }[];
+	createdBy?: { id: string; name: string } | null;
 	subtasks?: Subtask[];
 	createdAt: string;
 	updatedAt: string;
@@ -34,7 +35,6 @@ type Subtask = {
 	order: number;
 };
 
-type Field = { id: string; key: string; label: string; type: string; required: boolean; order: number };
 
 // Loading skeleton component
 function TasksSkeleton() {
@@ -94,7 +94,6 @@ function TasksPageInner() {
 	const isAdmin = currentUser?.role === "ADMIN" || currentUser?.role === "MANAGER";
 	const searchParams = useSearchParams();
 	const [tasks, setTasks] = useState<Task[]>([]);
-	const [fields, setFields] = useState<Field[]>([]);
 	const [loading, setLoading] = useState(true);
 	const [categoryFilter, setCategoryFilter] = useState<string>("all");
 	const [paymentFilter, setPaymentFilter] = useState<string>("all");
@@ -107,6 +106,18 @@ function TasksPageInner() {
 	const [editingId, setEditingId] = useState<string | null>(null);
 	const [editingTask, setEditingTask] = useState<Task | null>(null);
 	const [viewingId, setViewingId] = useState<string | null>(null);
+	// Which task rows have their comments panel expanded inline on the main
+	// list — collapsed by default so the list stays scannable; a person taps
+	// to open just the ones they care about, same gesture on phone or desktop.
+	const [expandedComments, setExpandedComments] = useState<Set<string>>(new Set());
+	function toggleComments(taskId: string) {
+		setExpandedComments(prev => {
+			const next = new Set(prev);
+			if (next.has(taskId)) next.delete(taskId);
+			else next.add(taskId);
+			return next;
+		});
+	}
 	const [editTitle, setEditTitle] = useState("");
 	const [editDesc, setEditDesc] = useState("");
 	const [editStatus, setEditStatus] = useState<Task["status"]>("TODO");
@@ -117,6 +128,10 @@ function TasksPageInner() {
 	const [deletingId, setDeletingId] = useState<string | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [customers, setCustomers] = useState<{ id: string; name: string }[]>([]);
+	const [dynamicCategories, setDynamicCategories] = useState<{
+		id: string; name: string;
+		fields: { id: string; key: string; label: string; type: "TEXT" | "NUMBER" | "DATE" | "BOOLEAN"; required: boolean }[];
+	}[]>([]);
 	const [customerId, setCustomerId] = useState<string>("");
 	const [users, setUsers] = useState<{ id: string; name: string }[]>([]);
 	const [showNewCustomerForm, setShowNewCustomerForm] = useState(false);
@@ -241,11 +256,11 @@ function TasksPageInner() {
 	async function load() {
 		setLoading(true);
 		try {
-			const [resTasks, resFields, resCustomers, resUsers] = await Promise.all([
+			const [resTasks, resCustomers, resUsers, resCategories] = await Promise.all([
 				fetch("/api/tasks?limit=100&includeArchived=false&includeQuotations=false"),
-				fetch("/api/custom-fields"),
 				fetch("/api/customers"),
-				fetch("/api/users")
+				fetch("/api/users"),
+				fetch("/api/categories")
 			]);
 			
 		if (resTasks.ok) {
@@ -258,14 +273,14 @@ function TasksPageInner() {
 				setTasks(loaded);
 			}
 			
-		if (resFields.ok) {
-			const json = await resFields.json();
-			setFields(json.fields ?? []);
-		}
-			
 			if (resCustomers.ok) {
 				const json = await resCustomers.json();
 				setCustomers((json.customers ?? []).map((c: any) => ({ id: c.id, name: c.name })));
+			}
+
+			if (resCategories.ok) {
+				const json = await resCategories.json();
+				setDynamicCategories(json.categories ?? []);
 			}
 			
 			if (resUsers.ok) {
@@ -505,6 +520,29 @@ function TasksPageInner() {
 
 	const removeFile = (index: number) => {
 		setFiles(prev => prev.filter((_, i) => i !== index));
+	};
+
+	// Edit-form attachments get their OWN state — previously this reused the
+	// create-form's `files`/setFiles, so a file picked while editing task A
+	// could silently vanish (or leak into the create-task panel) depending on
+	// what else was open on the page. Only one task can be edited at a time
+	// (editingId is a single id), so a single array here is safe.
+	const [editFiles, setEditFiles] = useState<File[]>([]);
+	const handleEditDrop = (e: React.DragEvent) => {
+		e.preventDefault();
+		e.stopPropagation();
+		setDragActive(false);
+		if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+			setEditFiles(prev => [...prev, ...Array.from(e.dataTransfer.files)]);
+		}
+	};
+	const handleEditFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+		if (e.target.files) {
+			setEditFiles(prev => [...prev, ...Array.from(e.target.files!)]);
+		}
+	};
+	const removeEditFile = (index: number) => {
+		setEditFiles(prev => prev.filter((_, i) => i !== index));
 	};
 
 	async function onCreate(e: React.FormEvent) {
@@ -808,6 +846,7 @@ function TasksPageInner() {
 						<option value="Invitation">Invitation</option>
 						<option value="Paperboard Boxes">Paperboard Boxes</option>
 						<option value="Others">Others</option>
+						{dynamicCategories.map(c => (<option key={c.id} value={c.name}>{c.name}</option>))}
 					</select>
 					
 					{/* Quantity field */}
@@ -1142,6 +1181,24 @@ function TasksPageInner() {
 						</div>
 					)}
 
+					{dynamicCategories.find(c => c.name === custom["category"])?.fields.map(f => (
+						<div key={f.id} className="text-sm">
+							<label className="block mb-1">{f.label}{f.required && " *"}</label>
+							{f.type === "TEXT" && (
+								<input className="input" value={custom[f.key] ?? ""} onChange={e => setCustom({ ...custom, [f.key]: e.target.value })} />
+							)}
+							{f.type === "NUMBER" && (
+								<input type="number" className="input" value={custom[f.key] ?? ""} onChange={e => setCustom({ ...custom, [f.key]: e.target.valueAsNumber })} />
+							)}
+							{f.type === "DATE" && (
+								<input type="date" className="input" value={custom[f.key] ?? ""} onChange={e => setCustom({ ...custom, [f.key]: e.target.value })} />
+							)}
+							{f.type === "BOOLEAN" && (
+								<label className="flex items-center gap-2"><input type="checkbox" checked={!!custom[f.key]} onChange={e => setCustom({ ...custom, [f.key]: e.target.checked })} /> {f.label}</label>
+							)}
+						</div>
+					))}
+
 					{!isQuotation && (
 						<>
 							<DateTimeSelector label="Start" value={start} onChange={setStart} />
@@ -1192,25 +1249,6 @@ function TasksPageInner() {
 						</div>
 					)}
 
-					<div className="space-y-2">
-						{fields.map(f => (
-							<div key={f.id} className="text-sm">
-								<label className="block mb-1">{f.label}</label>
-								{f.type === "TEXT" && (
-									<input className="input" value={custom[f.key] ?? ""} onChange={e => setCustom({ ...custom, [f.key]: e.target.value })} />
-								)}
-								{f.type === "NUMBER" && (
-									<input type="number" className="input" value={custom[f.key] ?? ""} onChange={e => setCustom({ ...custom, [f.key]: e.target.valueAsNumber })} />
-								)}
-								{f.type === "DATE" && (
-									<input type="date" className="input" value={custom[f.key] ?? ""} onChange={e => setCustom({ ...custom, [f.key]: e.target.value })} />
-								)}
-								{f.type === "BOOLEAN" && (
-									<label className="flex items-center gap-2"><input type="checkbox" checked={!!custom[f.key]} onChange={e => setCustom({ ...custom, [f.key]: e.target.checked })} /> {f.label}</label>
-								)}
-							</div>
-						))}
-					</div>
 					{error && <p className="text-sm text-danger">{error}</p>}
 					<button type="submit" className="w-full bg-black text-white py-2 px-3 rounded hover:bg-gray-800 disabled:opacity-50" disabled={submitting}>
 						{submitting ? "Creating..." : "Create task"}
@@ -1319,6 +1357,7 @@ function TasksPageInner() {
 								<option value="Invitation">Invitation</option>
 								<option value="Paperboard Boxes">Paperboard Boxes</option>
 								<option value="Others">Others</option>
+								{dynamicCategories.map(c => (<option key={c.id} value={c.name}>{c.name}</option>))}
 							</select>
 				</div>
 						<div>
@@ -1397,7 +1436,7 @@ function TasksPageInner() {
 										
 										// Handle file uploads first
 										const uploadedFiles = [];
-										for (const file of files) {
+										for (const file of editFiles) {
 											const formData = new FormData();
 											formData.append('file', file);
 											const uploadRes = await fetch('/api/upload', { method: 'POST', body: formData });
@@ -1433,7 +1472,7 @@ function TasksPageInner() {
 											})
 										});
 										setEditingId(null);
-										setFiles([]);
+										setEditFiles([]);
 										setCustom({});
 										setCustomerId("");
 										setAssigneeIds([]);
@@ -1576,6 +1615,7 @@ function TasksPageInner() {
 												<option value="Invitation">Invitation</option>
 												<option value="Paperboard Boxes">Paperboard Boxes</option>
 												<option value="Others">Others</option>
+												{dynamicCategories.map(c => (<option key={c.id} value={c.name}>{c.name}</option>))}
 											</select>
 										</div>
 										<div>
@@ -1883,6 +1923,24 @@ function TasksPageInner() {
 										</div>
 									)}
 
+									{dynamicCategories.find(c => c.name === custom["category"])?.fields.map(f => (
+										<div key={f.id} className="text-sm">
+											<label className="block mb-1">{f.label}{f.required && " *"}</label>
+											{f.type === "TEXT" && (
+												<input className="input" value={custom[f.key] ?? ""} onChange={e => setCustom({ ...custom, [f.key]: e.target.value })} />
+											)}
+											{f.type === "NUMBER" && (
+												<input type="number" className="input" value={custom[f.key] ?? ""} onChange={e => setCustom({ ...custom, [f.key]: e.target.valueAsNumber })} />
+											)}
+											{f.type === "DATE" && (
+												<input type="date" className="input" value={custom[f.key] ?? ""} onChange={e => setCustom({ ...custom, [f.key]: e.target.value })} />
+											)}
+											{f.type === "BOOLEAN" && (
+												<label className="flex items-center gap-2"><input type="checkbox" checked={!!custom[f.key]} onChange={e => setCustom({ ...custom, [f.key]: e.target.checked })} /> {f.label}</label>
+											)}
+										</div>
+									))}
+
 									<DateTimeSelector label="Start" value={editStart} onChange={setEditStart} />
 									<DateTimeSelector label="Due" value={editDue} onChange={setEditDue} />
 
@@ -1894,12 +1952,12 @@ function TasksPageInner() {
 										onDragEnter={handleDrag}
 										onDragLeave={handleDrag}
 										onDragOver={handleDrag}
-										onDrop={handleDrop}
+										onDrop={handleEditDrop}
 									>
 										<input
 											type="file"
 											multiple
-											onChange={handleFileSelect}
+											onChange={handleEditFileSelect}
 											className="hidden"
 											id={`file-upload-edit-${t.id}`}
 										/>
@@ -1911,15 +1969,15 @@ function TasksPageInner() {
 									</div>
 
 									{/* File list */}
-									{files.length > 0 && (
+									{editFiles.length > 0 && (
 										<div className="space-y-2">
 											<h4 className="text-sm font-medium">New Files:</h4>
-											{files.map((file, index) => (
+											{editFiles.map((file, index) => (
 												<div key={index} className="flex flex-wrap items-center justify-between gap-2 p-2.5 bg-wash rounded-lg">
 													<span className="text-sm truncate max-w-[60vw]">{file.name}</span>
 													<button
 														type="button"
-														onClick={() => removeFile(index)}
+														onClick={() => removeEditFile(index)}
 														className="text-red-600 text-sm"
 													>
 														Remove
@@ -1952,7 +2010,7 @@ function TasksPageInner() {
 										<button className="btn rounded px-3 py-2" type="submit">Save</button>
 										<button className="rounded border px-3 py-2" type="button" onClick={() => {
 											setEditingId(null);
-											setFiles([]);
+											setEditFiles([]);
 											setCustom({});
 											setCustomerId("");
 											setAssigneeIds([]);
@@ -2031,6 +2089,9 @@ function TasksPageInner() {
 								{t.assignments && t.assignments.map(a => (
 									<span key={a.id} className="chip chip-plain">{a.user.name}</span>
 								))}
+								{t.createdBy && (
+									<span className="meta">Created by {t.createdBy.name}</span>
+								)}
 								{isAssignedToMe(t) && (
 									<span className="chip chip-plain">Assigned to me</span>
 								)}
@@ -2050,7 +2111,7 @@ function TasksPageInner() {
 												setCustomerId(t.customerId || "");
 												setAssigneeIds(t.assignments?.map(a => a.user.id) || []);
 												setCustom(t.customFields || {});
-												setFiles([]);
+												setEditFiles([]);
 											}}
 										>
 											Edit
@@ -2061,6 +2122,13 @@ function TasksPageInner() {
 											onClick={() => setViewingId(t.id)}
 										>
 											View
+										</button>
+										<button
+											type="button"
+											className="btn btn-outline btn-sm"
+											onClick={() => toggleComments(t.id)}
+										>
+											💬 {expandedComments.has(t.id) ? "Hide comments" : "Comments"}
 										</button>
 										<button
 											type="button"
@@ -2080,6 +2148,12 @@ function TasksPageInner() {
 											{duplicatingId === t.id ? "Duplicating..." : "Duplicate"}
 										</button>
 									</div>
+
+									{expandedComments.has(t.id) && (
+										<div className="mt-3">
+											<TaskComments taskId={t.id} mentionable={users.map(u => ({ id: u.id, name: u.name }))} />
+										</div>
+									)}
 
 									{/* Subtasks Section */}
 									<div className="mt-4 border-t border-gray-200 pt-4">
@@ -2364,7 +2438,7 @@ function TasksPageInner() {
 										</div>
 										<div>
 											<label className="field-label">Created</label>
-											<p className="text-sm text-gray-900">{new Date(task.createdAt).toLocaleString()}</p>
+											<p className="text-sm text-gray-900">{new Date(task.createdAt).toLocaleString()}{task.createdBy && ` by ${task.createdBy.name}`}</p>
 										</div>
 									</div>
 								</div>

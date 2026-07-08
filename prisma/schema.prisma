@@ -186,15 +186,28 @@ model Customer {
   updatedAt DateTime @updatedAt
 }
 
-model CustomFieldDef {
-  id       String    @id @default(cuid())
-  key      String    @unique
-  label    String
-  type     String
-  required Boolean   @default(false)
-  order    Int       @default(0)
+model TaskCategory {
+  id     String @id @default(cuid())
+  name   String @unique
+  order  Int    @default(0)
+
+  fields    TaskCategoryField[]
+  createdAt DateTime @default(now())
+}
+
+model TaskCategoryField {
+  id         String       @id @default(cuid())
+  categoryId String
+  category   TaskCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  key        String
+  label      String
+  type       String // TEXT | NUMBER | DATE | BOOLEAN
+  required   Boolean @default(false)
+  order      Int     @default(0)
 
   createdAt DateTime @default(now())
+
+  @@unique([categoryId, key])
 }
 
 model Session {
