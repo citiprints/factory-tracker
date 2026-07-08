@@ -252,6 +252,13 @@ export async function DELETE(
 
 		// Delete all related records first (due to foreign key constraints)
 		await prisma.$transaction([
+			// Notifications aren't linked by a real foreign key (linkPath is a
+			// free-form string like "/tasks?open=<id>"), so match on that —
+			// otherwise a deleted task's notifications sit around forever,
+			// pointing at a task that no longer exists.
+			prisma.notification.deleteMany({
+				where: { linkPath: { contains: id } }
+			}),
 			// Delete subtasks first (they might have attachments)
 			prisma.subtask.deleteMany({
 				where: { taskId: id }

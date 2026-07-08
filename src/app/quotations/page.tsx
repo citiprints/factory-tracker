@@ -1,6 +1,7 @@
 "use client";
 import React, { useEffect, useState } from "react";
 import { useCurrentUser } from "../UserContext";
+import { useRefreshCounts } from "../CountsContext";
 
 type Quotation = {
 	id: string;
@@ -80,6 +81,7 @@ function DateTimeSelector({ label, value, onChange }: { label: string; value: st
 
 export default function QuotationsPage() {
 	const currentUser = useCurrentUser();
+	const refreshCounts = useRefreshCounts();
 	const [quotations, setQuotations] = useState<Quotation[]>([]);
 	const [loading, setLoading] = useState(true);
 	const [viewingId, setViewingId] = useState<string | null>(null);
@@ -228,9 +230,11 @@ export default function QuotationsPage() {
 		}
 	}
 
-	// Function to notify layout about data changes
+	// Refreshes the sidebar "Quotations" badge — previously this only fired
+	// a custom DOM event that nothing was listening for.
 	function notifyDataChange() {
 		window.dispatchEvent(new Event('dataChanged'));
+		refreshCounts();
 	}
 
 	useEffect(() => {

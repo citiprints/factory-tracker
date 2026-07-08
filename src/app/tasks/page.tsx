@@ -4,6 +4,7 @@ import React, { useEffect, useState, useRef, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useCurrentUser } from "../UserContext";
 import TaskComments from "@/components/TaskComments";
+import { useRefreshCounts } from "../CountsContext";
 
 type Task = {
 	id: string;
@@ -91,6 +92,7 @@ function TasksSkeleton() {
 
 function TasksPageInner() {
 	const currentUser = useCurrentUser();
+	const refreshCounts = useRefreshCounts();
 	const isAdmin = currentUser?.role === "ADMIN" || currentUser?.role === "MANAGER";
 	const searchParams = useSearchParams();
 	const [tasks, setTasks] = useState<Task[]>([]);
@@ -100,7 +102,13 @@ function TasksPageInner() {
 	const [assignedToMeOnly, setAssignedToMeOnly] = useState<boolean>(false);
 	const [title, setTitle] = useState("");
 	const [desc, setDesc] = useState("");
-	const [start, setStart] = useState<string>("");
+	// Defaults to "now" so most tasks need no extra clicks, but stays a
+	// normal editable field — just pre-filled, not locked.
+	const [start, setStart] = useState<string>(() => {
+		const now = new Date();
+		const pad = (n: number) => String(n).padStart(2, "0");
+		return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`;
+	});
 	const [due, setDue] = useState<string>("");
 	const [custom, setCustom] = useState<Record<string, any>>({});
 	const [editingId, setEditingId] = useState<string | null>(null);
@@ -294,9 +302,13 @@ function TasksPageInner() {
 		}
 	}
 
-	// Function to notify layout about data changes
+	// Refreshes the sidebar "Tasks" badge after anything that changes the
+	// count (delete, status change, create) — previously this only fired a
+	// custom DOM event that nothing was ever listening for, so the badge
+	// stayed stale until the next full navigation.
 	function notifyDataChange() {
 		window.dispatchEvent(new Event('dataChanged'));
+		refreshCounts();
 	}
 
 	useEffect(() => {
@@ -591,7 +603,11 @@ function TasksPageInner() {
 		}
 		setTitle("");
 		setDesc("");
-		setStart("");
+		{
+			const now = new Date();
+			const pad = (n: number) => String(n).padStart(2, "0");
+			setStart(`${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`);
+		}
 		setDue("");
 		setCustomerId("");
 		setAssigneeIds([]);

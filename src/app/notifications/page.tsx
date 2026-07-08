@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { PageHeader, EmptyState, Spinner } from "@/components/ui";
+import { useRefreshCounts } from "../CountsContext";
 
 type Notification = {
 	id: string;
@@ -15,6 +16,7 @@ type Notification = {
 
 export default function NotificationsPage() {
 	const router = useRouter();
+	const refreshCounts = useRefreshCounts();
 	const [notifications, setNotifications] = useState<Notification[] | null>(null);
 	const [markingAll, setMarkingAll] = useState(false);
 
@@ -37,6 +39,7 @@ export default function NotificationsPage() {
 				headers: { "content-type": "application/json" },
 				body: JSON.stringify({ id: n.id }),
 			}).catch(() => {});
+			refreshCounts();
 		}
 		if (n.linkPath) router.push(n.linkPath);
 	}
@@ -49,6 +52,7 @@ export default function NotificationsPage() {
 			body: JSON.stringify({ all: true }),
 		}).catch(() => {});
 		await load();
+		refreshCounts();
 		setMarkingAll(false);
 	}
 

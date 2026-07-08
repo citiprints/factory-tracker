@@ -4,6 +4,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import type { SafeUser } from "@/lib/session";
 import { requestPushToken, onForegroundPush } from "@/lib/firebase-client";
+import { CountsRefreshProvider } from "./CountsContext";
 
 /* ------------------------------------------------------------------ */
 /* Icons — small inline set, stroke inherits currentColor              */
@@ -276,19 +277,23 @@ export default function AppShell({
     return () => clearTimeout(toastTimer);
   }, [user]);
 
-  // Nav badges: refresh on every navigation so counts stay honest.
-  useEffect(() => {
+  // Nav badges: refresh on every navigation, and on-demand whenever a page
+  // calls refreshCounts() after an action that changes the numbers (marking
+  // a notification read, deleting a task, etc.) — without this, the badge
+  // only updated when navigating to a different page.
+  const refreshCounts = () => {
     if (!user) return;
-    let cancelled = false;
     fetch("/api/counts")
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
-        if (!cancelled && d && typeof d.pendingTasks === "number") setCounts(d);
+        if (d && typeof d.pendingTasks === "number") setCounts(d);
       })
       .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
+  };
+
+  useEffect(() => {
+    refreshCounts();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, pathname]);
 
   const badgeFor = (href: string): number => {
@@ -427,7 +432,7 @@ export default function AppShell({
         </header>
 
         <main className="flex-1 w-full max-w-6xl mx-auto px-4 md:px-8 py-5 md:py-8 pb-24 md:pb-8">
-          {children}
+          <CountsRefreshProvider refresh={refreshCounts}>{children}</CountsRefreshProvider>
         </main>
 
         {toast && (
