@@ -24,7 +24,7 @@ export async function GET() {
 			headers: {
 				"Content-Type": res.ContentType || "image/png",
 				// Short cache so a replaced logo shows up quickly.
-				"Cache-Control": "public, max-age=300",
+				"Cache-Control": "public, max-age=30, must-revalidate",
 			},
 		});
 	} catch {

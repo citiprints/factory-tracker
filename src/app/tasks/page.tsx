@@ -2656,7 +2656,7 @@ function TasksPageInner() {
 									</div>
 								)}
 
-								<TaskComments taskId={task.id} />
+								<TaskComments taskId={task.id} mentionable={users.map(u => ({ id: u.id, name: u.name }))} />
 							</div>
 						</div>
 					</div>

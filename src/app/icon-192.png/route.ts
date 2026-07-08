@@ -18,14 +18,14 @@ export async function GET() {
 		return new NextResponse(Buffer.from(logo.bytes), {
 			headers: {
 				"Content-Type": logo.contentType,
-				"Cache-Control": "public, max-age=300",
+				"Cache-Control": "public, max-age=30, must-revalidate",
 			},
 		});
 	}
 	return new NextResponse(FALLBACK_SVG, {
 		headers: {
 			"Content-Type": "image/svg+xml",
-			"Cache-Control": "public, max-age=300",
+			"Cache-Control": "public, max-age=30, must-revalidate",
 		},
 	});
 }

@@ -55,17 +55,25 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
 	// Notify everyone else on the task (assignees + creator), not the author.
 	const [assignments, taskRow] = await Promise.all([
-		prisma.assignment.findMany({ where: { taskId: id }, select: { userId: true } }),
-		prisma.task.findUnique({ where: { id }, select: { createdById: true } }),
+		prisma.assignment.findMany({ where: { taskId: id }, select: { userId: true, user: { select: { name: true } } } }),
+		prisma.task.findUnique({ where: { id }, select: { createdById: true, createdBy: { select: { name: true } } } }),
 	]);
-	const recipients = new Set<string>(assignments.map((a) => a.userId));
-	if (taskRow?.createdById) recipients.add(taskRow.createdById);
+	const recipients = new Map<string, string>(assignments.map((a) => [a.userId, a.user.name]));
+	if (taskRow?.createdById) recipients.set(taskRow.createdById, taskRow.createdBy?.name ?? "");
 	recipients.delete(user.id);
 
-	for (const uid of recipients) {
+	// Anyone whose name is @mentioned (and who already has access to this
+	// task) gets a clearly different notification, so a tag actually reads
+	// as "you were tagged" rather than blending into general chat noise.
+	const mentionedNames = new Set(
+		[...recipients.values()].filter((name) => name && new RegExp(`@${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`).test(parsed.data.body))
+	);
+
+	for (const [uid, name] of recipients) {
+		const mentioned = mentionedNames.has(name);
 		await notifyUser({
 			userId: uid,
-			title: `${user.name} commented`,
+			title: mentioned ? `${user.name} mentioned you` : `${user.name} commented`,
 			body: parsed.data.body.slice(0, 140),
 			type: "GENERAL",
 			linkPath: `/tasks?open=${id}`,
