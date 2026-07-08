@@ -18,6 +18,7 @@ const CreateTaskSchema = z.object({
 	jobNumber: z.string().optional(),
 	customFields: z.any().optional(),
 	assigneeId: z.string().optional(),
+	assigneeIds: z.array(z.string()).optional(),
 });
 
 export async function GET(request: NextRequest) {
@@ -115,22 +116,23 @@ export async function POST(request: Request) {
 			}
 		});
 
-		// Create assignment if assigneeId is provided
-		if (data.assigneeId) {
+		// Create assignments for everyone selected (assigneeIds takes priority;
+		// assigneeId kept for any older callers still sending a single id).
+		const assigneeIds = Array.from(
+			new Set([...(data.assigneeIds ?? []), ...(data.assigneeId ? [data.assigneeId] : [])])
+		);
+
+		for (const uid of assigneeIds) {
 			await prisma.assignment.create({
-				data: {
-					taskId: task.id,
-					userId: data.assigneeId,
-					role: "assignee"
-				}
+				data: { taskId: task.id, userId: uid, role: "assignee" },
 			});
 
 			await notifyUser({
-				userId: data.assigneeId,
+				userId: uid,
 				title: "New task assigned",
 				body: task.title,
 				type: "TASK_ASSIGNED",
-				linkPath: `/tasks/${task.id}`,
+				linkPath: `/tasks?open=${task.id}`,
 			});
 		}
 

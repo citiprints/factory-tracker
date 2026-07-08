@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser, isAdmin } from "@/lib/session";
+import { notifyUser } from "@/lib/notify";
 import { TASK_STATUSES, TASK_PRIORITIES } from "@/lib/constants";
 import { z } from "zod";
 import { S3Client, DeleteObjectCommand } from "@aws-sdk/client-s3";
@@ -28,6 +29,7 @@ const UpdateTaskSchema = z.object({
 	dueAt: z.string().optional(),
 	customerId: z.string().optional(),
 	assigneeId: z.string().optional(),
+	assigneeIds: z.array(z.string()).optional(),
 	customFields: z.any().optional(),
 });
 
@@ -117,9 +119,41 @@ export async function PATCH(
 			};
 		}
 
+		const { assigneeId, assigneeIds, ...taskFields } = validatedData;
+		const nextAssigneeIds =
+			assigneeIds !== undefined
+				? Array.from(new Set(assigneeIds))
+				: assigneeId !== undefined
+				? assigneeId
+					? [assigneeId]
+					: []
+				: undefined; // undefined = don't touch assignments at all
+
+		let newlyAdded: string[] = [];
+		if (nextAssigneeIds !== undefined) {
+			const current = await prisma.assignment.findMany({
+				where: { taskId: id },
+				select: { userId: true },
+			});
+			const currentIds = new Set<string>(current.map((a) => a.userId));
+			const nextIds = new Set<string>(nextAssigneeIds);
+
+			const toRemove: string[] = [...currentIds].filter((uid) => !nextIds.has(uid));
+			newlyAdded = [...nextIds].filter((uid) => !currentIds.has(uid));
+
+			if (toRemove.length > 0) {
+				await prisma.assignment.deleteMany({ where: { taskId: id, userId: { in: toRemove } } });
+			}
+			if (newlyAdded.length > 0) {
+				await prisma.assignment.createMany({
+					data: newlyAdded.map((uid) => ({ taskId: id, userId: uid, role: "assignee" })),
+				});
+			}
+		}
+
 		const task = await prisma.task.update({
 			where: { id },
-			data: validatedData,
+			data: taskFields,
 			include: {
 				customerRef: true,
 				assignments: {
@@ -130,6 +164,18 @@ export async function PATCH(
 				subtasks: true,
 			},
 		});
+
+		// Only the people who are genuinely new to this task get pinged —
+		// re-saving a task with the same assignees shouldn't re-notify them.
+		for (const uid of newlyAdded) {
+			await notifyUser({
+				userId: uid,
+				title: "Assigned to a task",
+				body: task.title,
+				type: "TASK_ASSIGNED",
+				linkPath: `/tasks?open=${task.id}`,
+			}).catch(() => {});
+		}
 
 		return NextResponse.json({ task });
 	} catch (error) {

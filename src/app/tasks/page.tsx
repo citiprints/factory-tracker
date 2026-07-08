@@ -3,6 +3,7 @@
 import React, { useEffect, useState, useRef, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useCurrentUser } from "../UserContext";
+import TaskComments from "@/components/TaskComments";
 
 type Task = {
 	id: string;
@@ -124,7 +125,7 @@ function TasksPageInner() {
 	const [newCustomerPhone, setNewCustomerPhone] = useState("");
 	const [newCustomerCompany, setNewCustomerCompany] = useState("");
 	const [newCustomerAddress, setNewCustomerAddress] = useState("");
-	const [assigneeId, setAssigneeId] = useState<string>("");
+	const [assigneeIds, setAssigneeIds] = useState<string[]>([]);
 	const [isQuotation, setIsQuotation] = useState<boolean>(false);
 	const [files, setFiles] = useState<File[]>([]);
 	const [dragActive, setDragActive] = useState(false);
@@ -541,7 +542,7 @@ function TasksPageInner() {
 				dueAt: isQuotation ? null : (due ? new Date(due).toISOString() : undefined), 
 				customerId: customerId || undefined, 
 				customFields: { ...custom, attachments: uploadedFiles, isQuotation }, 
-				assigneeId: assigneeId || undefined 
+				assigneeIds: assigneeIds.length > 0 ? assigneeIds : undefined
 			})
 		});
 		setSubmitting(false);
@@ -555,7 +556,7 @@ function TasksPageInner() {
 		setStart("");
 		setDue("");
 		setCustomerId("");
-		setAssigneeId("");
+		setAssigneeIds([]);
 		setIsQuotation(false);
 		setCustom({});
 		setFiles([]);
@@ -626,7 +627,7 @@ function TasksPageInner() {
 				dueAt: task.dueAt || undefined,
 				customerId: task.customerId || undefined,
 				customFields: task.customFields || {},
-				assigneeId: task.assignments?.[0]?.user.id || undefined
+				assigneeIds: task.assignments?.map(a => a.user.id) || undefined
 			};
 			
 			const res = await fetch("/api/tasks", {
@@ -779,12 +780,19 @@ function TasksPageInner() {
 							<option value="add-new">➕ Add New Customer</option>
 						</select>
 					)}
-					<select className="input" value={assigneeId} onChange={e => setAssigneeId(e.target.value)}>
-						<option value="">Assign to user (optional)</option>
+					<div className="border border-line-strong rounded-lg p-2.5 max-h-40 overflow-y-auto space-y-1">
+						<div className="field-label !mb-1.5">Assign to (select any number)</div>
 						{users.map(u => (
-							<option key={u.id} value={u.id}>{u.name}</option>
+							<label key={u.id} className="flex items-center gap-2 text-sm py-0.5 cursor-pointer">
+								<input
+									type="checkbox"
+									checked={assigneeIds.includes(u.id)}
+									onChange={e => setAssigneeIds(e.target.checked ? [...assigneeIds, u.id] : assigneeIds.filter(id => id !== u.id))}
+								/>
+								{u.name}
+							</label>
 						))}
-					</select>
+					</div>
 					
 					<select
 						className="input"
@@ -1416,7 +1424,7 @@ function TasksPageInner() {
 												startAt: editStart ? new Date(editStart).toISOString() : null,
 												dueAt: editDue ? new Date(editDue).toISOString() : null,
 												customerId: customerId || null,
-												assigneeId: assigneeId || null,
+												assigneeIds,
 												customFields: {
 													...t.customFields,
 													...custom,
@@ -1428,7 +1436,7 @@ function TasksPageInner() {
 										setFiles([]);
 										setCustom({});
 										setCustomerId("");
-										setAssigneeId("");
+										setAssigneeIds([]);
 										load();
 									}}
 									className="space-y-4"
@@ -1544,12 +1552,14 @@ function TasksPageInner() {
 										</div>
 										<div>
 											<label className="field-label">Assign to</label>
-											<select className="input" value={assigneeId} onChange={e => setAssigneeId(e.target.value)}>
-												<option value="">Select user</option>
+											<div className="border border-line-strong rounded-lg p-2.5 max-h-40 overflow-y-auto space-y-1">
 												{users.map(u => (
-													<option key={u.id} value={u.id}>{u.name}</option>
+													<label key={u.id} className="flex items-center gap-2 text-sm py-0.5 cursor-pointer">
+														<input type="checkbox" checked={assigneeIds.includes(u.id)} onChange={e => setAssigneeIds(e.target.checked ? [...assigneeIds, u.id] : assigneeIds.filter(id => id !== u.id))} />
+														{u.name}
+												</label>
 												))}
-											</select>
+											</div>
 										</div>
 									</div>
 
@@ -1945,7 +1955,7 @@ function TasksPageInner() {
 											setFiles([]);
 											setCustom({});
 											setCustomerId("");
-											setAssigneeId("");
+											setAssigneeIds([]);
 											setShowNewCustomerForm(false);
 											setNewCustomerName("");
 											setNewCustomerEmail("");
@@ -2038,7 +2048,7 @@ function TasksPageInner() {
 												setEditStart(t.startAt ? new Date(t.startAt).toISOString().slice(0,16) : "");
 												setEditDue(t.dueAt ? new Date(t.dueAt).toISOString().slice(0,16) : "");
 												setCustomerId(t.customerId || "");
-												setAssigneeId(t.assignments?.[0]?.user.id || "");
+												setAssigneeIds(t.assignments?.map(a => a.user.id) || []);
 												setCustom(t.customFields || {});
 												setFiles([]);
 											}}
@@ -2645,6 +2655,8 @@ function TasksPageInner() {
 										</div>
 									</div>
 								)}
+
+								<TaskComments taskId={task.id} />
 							</div>
 						</div>
 					</div>

@@ -36,6 +36,13 @@ async function sendPushBestEffort(userId: string, title: string, body: string, l
     tokens,
     notification: { title, body },
     data: linkPath ? { linkPath } : undefined,
+    android: {
+      priority: "high", // deliver immediately instead of being batched/delayed by Doze
+    },
+    apns: {
+      headers: { "apns-priority": "10" },
+      payload: { aps: { sound: "default" } },
+    },
     webpush: {
       fcmOptions: linkPath ? { link: linkPath } : undefined,
       notification: { icon: "/icon-192.png" },
