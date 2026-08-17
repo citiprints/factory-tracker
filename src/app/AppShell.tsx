@@ -321,6 +321,12 @@ export default function AppShell({
     }
   }
 
+  // Customer-facing onboarding form: no app chrome regardless of whether the
+  // person opening the link happens to also have a staff session.
+  if (pathname.startsWith("/forms/")) {
+    return <>{children}</>;
+  }
+
   /* ---- Signed-out: centered content on paper, minimal chrome ---- */
   if (!user) {
     return (

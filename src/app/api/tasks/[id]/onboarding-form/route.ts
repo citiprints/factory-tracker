@@ -1,0 +1,86 @@
+import { NextRequest, NextResponse } from "next/server";
+import { randomBytes } from "crypto";
+import { prisma } from "@/lib/db";
+import { getCurrentUser } from "@/lib/session";
+import { sendEmail } from "@/lib/email";
+import { z } from "zod";
+
+const ONBOARDING_FORM_TTL_MS = 14 * 24 * 60 * 60 * 1000; // 14 days
+
+const CreateOnboardingFormSchema = z.object({
+	sendEmail: z.boolean().optional(),
+});
+
+export async function GET(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+	const user = await getCurrentUser();
+	if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+	const { id } = await params;
+	const form = await prisma.onboardingForm.findFirst({
+		where: { taskId: id, status: { not: "REVOKED" } },
+		orderBy: { createdAt: "desc" },
+		include: { filledByStaff: { select: { id: true, name: true } } },
+	});
+
+	return NextResponse.json({ form });
+}
+
+export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+	const user = await getCurrentUser();
+	if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+	try {
+		const { id } = await params;
+		const json = await request.json().catch(() => ({}));
+		const data = CreateOnboardingFormSchema.parse(json);
+
+		const task = await prisma.task.findUnique({
+			where: { id },
+			include: { customerRef: { select: { name: true, email: true } } },
+		});
+		if (!task) return NextResponse.json({ error: "Task not found" }, { status: 404 });
+
+		// A resend is a revoke-and-reissue: the old link must stop working
+		// the moment a new one exists, in case it was already shared/leaked.
+		await prisma.onboardingForm.updateMany({
+			where: { taskId: id, status: "PENDING" },
+			data: { status: "REVOKED" },
+		});
+
+		const token = randomBytes(32).toString("base64url");
+		const form = await prisma.onboardingForm.create({
+			data: {
+				taskId: id,
+				token,
+				expiresAt: new Date(Date.now() + ONBOARDING_FORM_TTL_MS),
+				createdById: user.id,
+			},
+		});
+
+		const link = `${request.nextUrl.origin}/forms/${token}`;
+
+		if (data.sendEmail) {
+			const customerEmail = task.customerRef?.email;
+			if (!customerEmail) {
+				return NextResponse.json(
+					{ error: "This task's customer has no email on file", form, link },
+					{ status: 200 }
+				);
+			}
+			await sendEmail({
+				to: customerEmail,
+				subject: `Please complete your details for "${task.title}"`,
+				html: `<p>Hi ${task.customerRef?.name ?? "there"},</p><p>Please fill in your billing and delivery details for <strong>${task.title}</strong> using the secure link below:</p><p><a href="${link}">${link}</a></p><p>This link expires in 14 days.</p>`,
+				text: `Please fill in your billing and delivery details for "${task.title}": ${link} (expires in 14 days)`,
+			});
+		}
+
+		return NextResponse.json({ form, link }, { status: 201 });
+	} catch (error) {
+		if (error instanceof z.ZodError) {
+			return NextResponse.json({ error: error.flatten() }, { status: 400 });
+		}
+		console.error("POST /api/tasks/[id]/onboarding-form error:", error);
+		return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+	}
+}

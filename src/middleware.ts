@@ -16,6 +16,8 @@ export function middleware(request: NextRequest) {
     PUBLIC_PATHS.some((p) => pathname === p) ||
     pathname.startsWith("/_next") ||
     pathname.startsWith("/api/auth") ||
+    pathname.startsWith("/forms/") ||
+    pathname.startsWith("/api/forms/") ||
     pathname.includes(".");
 
   const hasSessionCookie = !!request.cookies.get("auth_session")?.value;

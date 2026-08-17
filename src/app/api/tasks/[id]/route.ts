@@ -279,6 +279,14 @@ export async function DELETE(
 			prisma.activityLog.deleteMany({
 				where: { taskId: id }
 			}),
+			// Delete despatch list items
+			prisma.despatchItem.deleteMany({
+				where: { taskId: id }
+			}),
+			// Delete onboarding forms
+			prisma.onboardingForm.deleteMany({
+				where: { taskId: id }
+			}),
 			// Finally delete the task
 			prisma.task.delete({
 				where: { id }

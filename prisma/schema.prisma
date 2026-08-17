@@ -41,6 +41,9 @@ model User {
   pushSubscriptions PushSubscription[]
   notifications     Notification[]
 
+  onboardingFormsFilled  OnboardingForm[] @relation("OnboardingFormFilledBy")
+  onboardingFormsCreated OnboardingForm[] @relation("OnboardingFormCreatedBy")
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -157,12 +160,14 @@ model Task {
   createdById String
   createdBy   User         @relation("TasksCreated", fields: [createdById], references: [id])
 
-  subtasks     Subtask[]
-  assignments  Assignment[]
-  comments     Comment[]
-  attachments  Attachment[]
-  activities   ActivityLog[] @relation("TaskActivities")
-  shifts       Shift[]
+  subtasks        Subtask[]
+  assignments     Assignment[]
+  comments        Comment[]
+  attachments     Attachment[]
+  activities      ActivityLog[] @relation("TaskActivities")
+  shifts          Shift[]
+  despatchItems   DespatchItem[]
+  onboardingForms OnboardingForm[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -170,6 +175,60 @@ model Task {
   @@index([status, dueAt])
   @@index([priority])
   @@index([customerId])
+}
+
+// A line item on a task's despatch list — tracks packing/dispatch/delivery
+// per item so fulfillment can be followed up on individually.
+model DespatchItem {
+  id     String @id @default(cuid())
+  taskId String
+  task   Task   @relation(fields: [taskId], references: [id])
+
+  name     String
+  quantity Float
+  unit     String @default("pcs")
+  status   String @default("PENDING") // PENDING | PACKED | DISPATCHED | DELIVERED
+  order    Int    @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([taskId])
+}
+
+// A secure, tokenized link sent to a customer (or filled in by staff) to
+// collect billing/delivery details for a specific task.
+model OnboardingForm {
+  id     String @id @default(cuid())
+  taskId String
+  task   Task   @relation(fields: [taskId], references: [id])
+
+  token     String   @unique
+  status    String   @default("PENDING") // PENDING | SUBMITTED | REVOKED
+  expiresAt DateTime
+
+  billingName    String?
+  billingEmail   String?
+  billingPhone   String?
+  billingAddress String?
+  gstin          String?
+
+  deliveryContactName String?
+  deliveryPhone       String?
+  deliveryAddress     String?
+  deliveryNotes       String?
+
+  submittedAt     DateTime?
+  filledByStaffId String?
+  filledByStaff   User?     @relation("OnboardingFormFilledBy", fields: [filledByStaffId], references: [id])
+
+  createdById String
+  createdBy   User   @relation("OnboardingFormCreatedBy", fields: [createdById], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([taskId])
 }
 
 model Customer {

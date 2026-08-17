@@ -65,7 +65,10 @@ export async function GET(request: NextRequest) {
 					dueAt: true,
 					order: true
 				}
-			}, 
+			},
+			despatchItems: {
+				orderBy: { order: "asc" }
+			},
 			customerRef: {
 				select: {
 					id: true,

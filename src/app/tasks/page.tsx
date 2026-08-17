@@ -23,6 +23,7 @@ type Task = {
 	assignments?: { id: string; user: { id: string; name: string }; role: string }[];
 	createdBy?: { id: string; name: string } | null;
 	subtasks?: Subtask[];
+	despatchItems?: DespatchItem[];
 	createdAt: string;
 	updatedAt: string;
 };
@@ -34,6 +35,25 @@ type Subtask = {
 	assigneeId?: string | null;
 	dueAt?: string | null;
 	order: number;
+};
+
+type DespatchItem = {
+	id: string;
+	taskId: string;
+	name: string;
+	quantity: number;
+	unit: string;
+	status: "PENDING" | "PACKED" | "DISPATCHED" | "DELIVERED";
+	order: number;
+};
+
+type OnboardingForm = {
+	id: string;
+	taskId: string;
+	status: "PENDING" | "SUBMITTED" | "REVOKED";
+	expiresAt: string;
+	submittedAt?: string | null;
+	filledByStaff?: { id: string; name: string } | null;
 };
 
 
@@ -167,6 +187,24 @@ function TasksPageInner() {
 	const [editSubtaskDueAt, setEditSubtaskDueAt] = useState<string>("");
 	const [editSubtaskEstimatedHours, setEditSubtaskEstimatedHours] = useState<number | null>(null);
 
+	// Despatch list rows collected while creating a task (posted after the
+	// task itself is created, same two-step pattern as subtasks/attachments).
+	const [despatchDraft, setDespatchDraft] = useState<{ name: string; quantity: string; unit: string }[]>([]);
+	const [addingDespatchItemToTaskId, setAddingDespatchItemToTaskId] = useState<string | null>(null);
+	const [newDespatchName, setNewDespatchName] = useState("");
+	const [newDespatchQuantity, setNewDespatchQuantity] = useState("");
+	const [newDespatchUnit, setNewDespatchUnit] = useState("pcs");
+
+	// Onboarding form: latest form per task, loaded lazily when a task card
+	// is expanded, plus state for the "fill in manually" modal.
+	const [onboardingForms, setOnboardingForms] = useState<Record<string, OnboardingForm | null>>({});
+	const [onboardingLoadingTaskId, setOnboardingLoadingTaskId] = useState<string | null>(null);
+	const [fillingOnboardingTaskId, setFillingOnboardingTaskId] = useState<string | null>(null);
+	const [onboardingFillValues, setOnboardingFillValues] = useState({
+		billingName: "", billingEmail: "", billingPhone: "", billingAddress: "", gstin: "",
+		deliveryContactName: "", deliveryPhone: "", deliveryAddress: "", deliveryNotes: "",
+	});
+
 	const AUTO_REFRESH_SECONDS = 120;
 	const [groupBy, setGroupBy] = useState<"none"|"category"|"customer"|"status"|"assignee">("none");
 	const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -276,6 +314,7 @@ function TasksPageInner() {
 				const loaded: Task[] = (json.tasks ?? []).map((t: any) => ({
 					...t,
 					subtasks: t.subtasks ?? [],
+					despatchItems: t.despatchItems ?? [],
 					customFields: typeof t.customFields === "string" ? (() => { try { return JSON.parse(t.customFields); } catch { return {}; } })() : (t.customFields || {})
 				}));
 				setTasks(loaded);
@@ -504,6 +543,113 @@ function TasksPageInner() {
 		}
 	}
 
+	// Despatch list functions
+	function addDespatchDraftRow() {
+		if (!newDespatchName.trim() || !newDespatchQuantity.trim()) return;
+		setDespatchDraft(prev => [...prev, { name: newDespatchName.trim(), quantity: newDespatchQuantity, unit: newDespatchUnit.trim() || "pcs" }]);
+		setNewDespatchName("");
+		setNewDespatchQuantity("");
+		setNewDespatchUnit("pcs");
+	}
+
+	function removeDespatchDraftRow(index: number) {
+		setDespatchDraft(prev => prev.filter((_, i) => i !== index));
+	}
+
+	async function createDespatchItem(taskId: string) {
+		if (!newDespatchName.trim() || !newDespatchQuantity.trim()) return;
+
+		const res = await fetch(`/api/tasks/${taskId}/despatch-items`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				items: [{ name: newDespatchName.trim(), quantity: Number(newDespatchQuantity), unit: newDespatchUnit.trim() || "pcs" }]
+			})
+		});
+
+		if (res.ok) {
+			setNewDespatchName("");
+			setNewDespatchQuantity("");
+			setNewDespatchUnit("pcs");
+			setAddingDespatchItemToTaskId(null);
+			load();
+		}
+	}
+
+	async function updateDespatchItemStatus(itemId: string, status: DespatchItem["status"]) {
+		const res = await fetch(`/api/despatch-items/${itemId}`, {
+			method: "PATCH",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ status })
+		});
+		if (res.ok) load();
+	}
+
+	async function deleteDespatchItem(itemId: string) {
+		if (!confirm("Remove this item from the despatch list?")) return;
+		const res = await fetch(`/api/despatch-items/${itemId}`, { method: "DELETE" });
+		if (res.ok) load();
+	}
+
+	// Onboarding form functions
+	async function loadOnboardingForm(taskId: string) {
+		setOnboardingLoadingTaskId(taskId);
+		try {
+			const res = await fetch(`/api/tasks/${taskId}/onboarding-form`);
+			if (res.ok) {
+				const json = await res.json();
+				setOnboardingForms(prev => ({ ...prev, [taskId]: json.form ?? null }));
+			}
+		} finally {
+			setOnboardingLoadingTaskId(null);
+		}
+	}
+
+	async function generateOnboardingLink(taskId: string, sendViaEmail: boolean) {
+		const res = await fetch(`/api/tasks/${taskId}/onboarding-form`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ sendEmail: sendViaEmail })
+		});
+		const json = await res.json().catch(() => ({}));
+		if (!res.ok) {
+			setError(json.error ?? "Failed to generate onboarding link");
+			return;
+		}
+		setOnboardingForms(prev => ({ ...prev, [taskId]: json.form }));
+		if (!sendViaEmail && json.link) {
+			navigator.clipboard?.writeText(json.link).catch(() => {});
+			alert(`Link copied to clipboard:\n${json.link}`);
+		} else if (sendViaEmail && json.error) {
+			// sendEmail requested but customer has no email on file — link was still created
+			alert(`${json.error}. Link created — copy it instead:\n${json.link}`);
+		}
+	}
+
+	function openOnboardingFillModal(taskId: string) {
+		setFillingOnboardingTaskId(taskId);
+		setOnboardingFillValues({
+			billingName: "", billingEmail: "", billingPhone: "", billingAddress: "", gstin: "",
+			deliveryContactName: "", deliveryPhone: "", deliveryAddress: "", deliveryNotes: "",
+		});
+	}
+
+	async function submitOnboardingFill(taskId: string) {
+		const res = await fetch(`/api/tasks/${taskId}/onboarding-form/fill`, {
+			method: "PATCH",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify(onboardingFillValues)
+		});
+		const json = await res.json().catch(() => ({}));
+		if (!res.ok) {
+			setError(typeof json.error === "string" ? json.error : "Failed to save onboarding details");
+			return;
+		}
+		setOnboardingForms(prev => ({ ...prev, [taskId]: json.form }));
+		setFillingOnboardingTaskId(null);
+		load();
+	}
+
 	// File upload handlers
 	const handleDrag = (e: React.DragEvent) => {
 		e.preventDefault();
@@ -595,12 +741,26 @@ function TasksPageInner() {
 				assigneeIds: assigneeIds.length > 0 ? assigneeIds : undefined
 			})
 		});
-		setSubmitting(false);
 		if (!res.ok) {
+			setSubmitting(false);
 			const json = await res.json().catch(() => ({}));
 			setError(json.error ?? "Failed to create task");
 			return;
 		}
+
+		const { task: createdTask } = await res.json();
+
+		if (despatchDraft.length > 0) {
+			await fetch(`/api/tasks/${createdTask.id}/despatch-items`, {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					items: despatchDraft.map(d => ({ name: d.name, quantity: Number(d.quantity), unit: d.unit }))
+				})
+			}).catch(() => {});
+		}
+
+		setSubmitting(false);
 		setTitle("");
 		setDesc("");
 		{
@@ -614,6 +774,7 @@ function TasksPageInner() {
 		setIsQuotation(false);
 		setCustom({});
 		setFiles([]);
+		setDespatchDraft([]);
 		setShowNewCustomerForm(false);
 		setNewCustomerName("");
 		setNewCustomerEmail("");
@@ -1264,6 +1425,27 @@ function TasksPageInner() {
 							))}
 						</div>
 					)}
+
+					{/* Despatch list */}
+					<div className="space-y-2">
+						<h4 className="text-sm font-medium">Despatch list</h4>
+						{despatchDraft.length > 0 && (
+							<div className="space-y-1.5">
+								{despatchDraft.map((row, index) => (
+									<div key={index} className="flex flex-wrap items-center justify-between gap-2 p-2.5 bg-wash rounded-lg">
+										<span className="text-sm">{row.name} — {row.quantity} {row.unit}</span>
+										<button type="button" onClick={() => removeDespatchDraftRow(index)} className="text-red-600 text-sm">Remove</button>
+									</div>
+								))}
+							</div>
+						)}
+						<div className="flex flex-wrap gap-2">
+							<input className="input flex-[3] min-w-[8rem]" placeholder="Item name" value={newDespatchName} onChange={(e) => setNewDespatchName(e.target.value)} />
+							<input className="input flex-1 min-w-[5rem]" type="number" min="0" step="any" placeholder="Qty" value={newDespatchQuantity} onChange={(e) => setNewDespatchQuantity(e.target.value)} />
+							<input className="input flex-1 min-w-[5rem]" placeholder="Unit" value={newDespatchUnit} onChange={(e) => setNewDespatchUnit(e.target.value)} />
+							<button type="button" className="btn btn-outline btn-sm" onClick={addDespatchDraftRow}>+ Add item</button>
+						</div>
+					</div>
 
 					{error && <p className="text-sm text-danger">{error}</p>}
 					<button type="submit" className="w-full bg-black text-white py-2 px-3 rounded hover:bg-gray-800 disabled:opacity-50" disabled={submitting}>
@@ -2405,6 +2587,122 @@ function TasksPageInner() {
 											<p className="text-xs text-gray-500 italic">No subtasks yet</p>
 										)}
 									</div>
+
+									{/* Despatch List Section */}
+									<div className="mt-4 border-t border-gray-200 pt-4">
+										<div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+											<h4 className="text-sm font-medium">
+												Despatch list
+												{t.despatchItems && t.despatchItems.length > 0 && (
+													<span className="text-xs text-muted ml-2">
+														{t.despatchItems.filter(i => i.status === "DELIVERED").length}/{t.despatchItems.length} delivered
+													</span>
+												)}
+											</h4>
+											<button
+												type="button"
+												className="text-xs px-2 py-1 rounded border"
+												onClick={() => setAddingDespatchItemToTaskId(addingDespatchItemToTaskId === t.id ? null : t.id)}
+											>
+												{addingDespatchItemToTaskId === t.id ? "Cancel" : "Add item"}
+											</button>
+										</div>
+
+										{addingDespatchItemToTaskId === t.id && (
+											<form
+												onSubmit={(e) => { e.preventDefault(); createDespatchItem(t.id); }}
+												className="flex flex-wrap gap-2 p-3 border border-line rounded-lg bg-wash mb-3"
+											>
+												<input className="input flex-[3] min-w-[8rem] text-sm" placeholder="Item name" value={newDespatchName} onChange={(e) => setNewDespatchName(e.target.value)} required />
+												<input className="input flex-1 min-w-[5rem] text-sm" type="number" min="0" step="any" placeholder="Qty" value={newDespatchQuantity} onChange={(e) => setNewDespatchQuantity(e.target.value)} required />
+												<input className="input flex-1 min-w-[5rem] text-sm" placeholder="Unit" value={newDespatchUnit} onChange={(e) => setNewDespatchUnit(e.target.value)} />
+												<button type="submit" className="btn btn-accent btn-sm">Add</button>
+											</form>
+										)}
+
+										{t.despatchItems && t.despatchItems.length > 0 ? (
+											<div className="space-y-2">
+												{t.despatchItems.map((item) => (
+													<div key={item.id} className="flex flex-wrap items-center justify-between gap-2 p-2.5 border border-gray-200 rounded bg-white">
+														<span className="text-sm">{item.name} — {item.quantity} {item.unit}</span>
+														<div className="flex items-center gap-2">
+															<select
+																className={`input text-xs py-1 !w-auto chip ${
+																	item.status === "DELIVERED" ? "chip-ok" :
+																	item.status === "DISPATCHED" ? "chip-info" :
+																	item.status === "PACKED" ? "chip-warn" : "chip-plain"
+																}`}
+																value={item.status}
+																onChange={(e) => updateDespatchItemStatus(item.id, e.target.value as DespatchItem["status"])}
+															>
+																<option value="PENDING">Pending</option>
+																<option value="PACKED">Packed</option>
+																<option value="DISPATCHED">Dispatched</option>
+																<option value="DELIVERED">Delivered</option>
+															</select>
+															<button
+																type="button"
+																onClick={() => deleteDespatchItem(item.id)}
+																className="text-xs px-2 py-1 rounded border text-red-600 hover:text-red-800 hover:bg-red-50"
+															>
+																Delete
+															</button>
+														</div>
+													</div>
+												))}
+											</div>
+										) : (
+											<p className="text-xs text-gray-500 italic">No despatch items yet</p>
+										)}
+									</div>
+
+									{/* Onboarding Form Section */}
+									<div className="mt-4 border-t border-gray-200 pt-4">
+										<div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+											<h4 className="text-sm font-medium">Onboarding form</h4>
+											{!(t.id in onboardingForms) && (
+												<button
+													type="button"
+													className="text-xs px-2 py-1 rounded border"
+													onClick={() => loadOnboardingForm(t.id)}
+													disabled={onboardingLoadingTaskId === t.id}
+												>
+													{onboardingLoadingTaskId === t.id ? "Loading..." : "Show status"}
+												</button>
+											)}
+										</div>
+
+										{t.id in onboardingForms && (() => {
+											const form = onboardingForms[t.id];
+											return (
+												<div className="space-y-2">
+													<p className="text-sm">
+														{!form && "No form sent yet."}
+														{form?.status === "PENDING" && `Pending — expires ${new Date(form.expiresAt).toLocaleDateString()}`}
+														{form?.status === "SUBMITTED" && !form.filledByStaff && `Submitted by customer${form.submittedAt ? " on " + new Date(form.submittedAt).toLocaleDateString() : ""}`}
+														{form?.status === "SUBMITTED" && form.filledByStaff && `Submitted by ${form.filledByStaff.name}${form.submittedAt ? " on " + new Date(form.submittedAt).toLocaleDateString() : ""}`}
+													</p>
+													<div className="flex flex-wrap gap-2">
+														<button type="button" className="btn btn-outline btn-sm" onClick={() => generateOnboardingLink(t.id, false)}>
+															{form && form.status === "PENDING" ? "Resend (copy new link)" : "Generate & copy link"}
+														</button>
+														<button
+															type="button"
+															className="btn btn-outline btn-sm"
+															onClick={() => generateOnboardingLink(t.id, true)}
+															disabled={!t.customerRef?.email}
+															title={!t.customerRef?.email ? "Linked customer has no email on file" : undefined}
+														>
+															Email to customer
+														</button>
+														<button type="button" className="btn btn-outline btn-sm" onClick={() => openOnboardingFillModal(t.id)}>
+															Fill in manually
+														</button>
+													</div>
+												</div>
+											);
+										})()}
+									</div>
 								</div>
 							)}
 						</li>
@@ -2413,6 +2711,43 @@ function TasksPageInner() {
 				</ul>
 				)}
 			</section>
+
+			{/* Onboarding Form — Fill In Manually Modal */}
+			{fillingOnboardingTaskId && (
+				<div className="fixed inset-0 bg-black/55 backdrop-blur-[2px] flex items-center justify-center z-50 p-3">
+					<div className="card card-pad max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto !bg-[var(--raised)] shadow-lg">
+						<div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+							<h2 className="text-lg font-semibold">Fill onboarding details</h2>
+							<button type="button" className="text-gray-500 hover:text-gray-700" onClick={() => setFillingOnboardingTaskId(null)}>✕</button>
+						</div>
+						<form
+							onSubmit={(e) => { e.preventDefault(); submitOnboardingFill(fillingOnboardingTaskId); }}
+							className="space-y-4"
+						>
+							<div className="space-y-2">
+								<h3 className="text-sm font-medium">Billing details</h3>
+								<input className="input text-sm" placeholder="Billing name *" required value={onboardingFillValues.billingName} onChange={(e) => setOnboardingFillValues(v => ({ ...v, billingName: e.target.value }))} />
+								<input className="input text-sm" type="email" placeholder="Email" value={onboardingFillValues.billingEmail} onChange={(e) => setOnboardingFillValues(v => ({ ...v, billingEmail: e.target.value }))} />
+								<input className="input text-sm" placeholder="Phone" value={onboardingFillValues.billingPhone} onChange={(e) => setOnboardingFillValues(v => ({ ...v, billingPhone: e.target.value }))} />
+								<textarea className="input text-sm" rows={2} placeholder="Billing address *" required value={onboardingFillValues.billingAddress} onChange={(e) => setOnboardingFillValues(v => ({ ...v, billingAddress: e.target.value }))} />
+								<input className="input text-sm" placeholder="GSTIN / Tax ID" value={onboardingFillValues.gstin} onChange={(e) => setOnboardingFillValues(v => ({ ...v, gstin: e.target.value }))} />
+							</div>
+							<div className="space-y-2">
+								<h3 className="text-sm font-medium">Delivery details</h3>
+								<input className="input text-sm" placeholder="Contact name" value={onboardingFillValues.deliveryContactName} onChange={(e) => setOnboardingFillValues(v => ({ ...v, deliveryContactName: e.target.value }))} />
+								<input className="input text-sm" placeholder="Delivery phone" value={onboardingFillValues.deliveryPhone} onChange={(e) => setOnboardingFillValues(v => ({ ...v, deliveryPhone: e.target.value }))} />
+								<textarea className="input text-sm" rows={2} placeholder="Delivery address *" required value={onboardingFillValues.deliveryAddress} onChange={(e) => setOnboardingFillValues(v => ({ ...v, deliveryAddress: e.target.value }))} />
+								<textarea className="input text-sm" rows={2} placeholder="Delivery notes" value={onboardingFillValues.deliveryNotes} onChange={(e) => setOnboardingFillValues(v => ({ ...v, deliveryNotes: e.target.value }))} />
+							</div>
+							{error && <p className="text-sm text-danger">{error}</p>}
+							<div className="flex gap-2">
+								<button type="submit" className="btn btn-accent btn-sm">Save</button>
+								<button type="button" className="btn btn-outline btn-sm" onClick={() => setFillingOnboardingTaskId(null)}>Cancel</button>
+							</div>
+						</form>
+					</div>
+				</div>
+			)}
 
 			{/* View Task Modal */}
 			{viewingId && (() => {
