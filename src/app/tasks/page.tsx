@@ -25,6 +25,7 @@ type Task = {
 	createdBy?: { id: string; name: string } | null;
 	subtasks?: Subtask[];
 	despatchItems?: DespatchItem[];
+	onboardingStatus?: "PENDING" | "SUBMITTED" | null;
 	createdAt: string;
 	updatedAt: string;
 };
@@ -61,10 +62,12 @@ type OnboardingForm = {
 	billingName?: string | null;
 	billingEmail?: string | null;
 	billingPhone?: string | null;
+	billingSecondaryPhone?: string | null;
 	billingAddress?: string | null;
 	gstin?: string | null;
 	deliveryContactName?: string | null;
 	deliveryPhone?: string | null;
+	deliverySecondaryPhone?: string | null;
 	deliveryAddress?: string | null;
 	deliveryNotes?: string | null;
 };
@@ -226,8 +229,8 @@ function TasksPageInner() {
 	const [onboardingLoadingTaskId, setOnboardingLoadingTaskId] = useState<string | null>(null);
 	const [fillingOnboardingTaskId, setFillingOnboardingTaskId] = useState<string | null>(null);
 	const [onboardingFillValues, setOnboardingFillValues] = useState({
-		billingName: "", billingEmail: "", billingPhone: "", billingAddress: "", gstin: "",
-		deliveryContactName: "", deliveryPhone: "", deliveryAddress: "", deliveryNotes: "",
+		billingName: "", billingEmail: "", billingPhone: "", billingSecondaryPhone: "", billingAddress: "", gstin: "",
+		deliveryContactName: "", deliveryPhone: "", deliverySecondaryPhone: "", deliveryAddress: "", deliveryNotes: "",
 	});
 	const [fillSameAsBilling, setFillSameAsBilling] = useState(false);
 	const [viewingOnboardingTaskId, setViewingOnboardingTaskId] = useState<string | null>(null);
@@ -346,6 +349,7 @@ function TasksPageInner() {
 						...d,
 						specFields: typeof d.specFields === "string" ? (() => { try { return JSON.parse(d.specFields); } catch { return {}; } })() : (d.specFields || {})
 					})),
+					onboardingStatus: t.onboardingForms?.[0]?.status ?? null,
 					customFields: typeof t.customFields === "string" ? (() => { try { return JSON.parse(t.customFields); } catch { return {}; } })() : (t.customFields || {})
 				}));
 				setTasks(loaded);
@@ -430,6 +434,23 @@ function TasksPageInner() {
 			);
 		})
 		.filter(task => (!assignedToMeOnly ? true : isAssignedToMe(task)));
+
+	const STATUS_LABELS: Record<string, string> = {
+		TODO: "To do", IN_PROGRESS: "In progress", BLOCKED: "Blocked", DONE: "Done",
+		CANCELLED: "Cancelled", ARCHIVED: "Archived", CLIENT_TO_REVERT: "Client to revert", OTHERS: "Others",
+	};
+	function statusChipClass(status: Task["status"]): string {
+		if (status === "DONE") return "chip chip-ok";
+		if (status === "IN_PROGRESS") return "chip chip-info";
+		if (status === "BLOCKED" || status === "CANCELLED") return "chip chip-danger";
+		return "chip chip-plain";
+	}
+	function priorityChipClass(priority: Task["priority"]): string {
+		if (priority === "URGENT") return "chip chip-danger";
+		if (priority === "HIGH") return "chip chip-warn";
+		if (priority === "MEDIUM") return "chip chip-info";
+		return "chip chip-plain";
+	}
 
 	function getGroupKey(t: Task): string {
 		switch (groupBy) {
@@ -711,14 +732,15 @@ function TasksPageInner() {
 		setFillingOnboardingTaskId(taskId);
 		setFillSameAsBilling(false);
 		setOnboardingFillValues({
-			billingName: "", billingEmail: "", billingPhone: "", billingAddress: "", gstin: "",
-			deliveryContactName: "", deliveryPhone: "", deliveryAddress: "", deliveryNotes: "",
+			billingName: "", billingEmail: "", billingPhone: "", billingSecondaryPhone: "", billingAddress: "", gstin: "",
+			deliveryContactName: "", deliveryPhone: "", deliverySecondaryPhone: "", deliveryAddress: "", deliveryNotes: "",
 		});
 	}
 
 	const FILL_BILLING_TO_DELIVERY: Record<string, string> = {
 		billingName: "deliveryContactName",
 		billingPhone: "deliveryPhone",
+		billingSecondaryPhone: "deliverySecondaryPhone",
 		billingAddress: "deliveryAddress",
 	};
 
@@ -738,6 +760,7 @@ function TasksPageInner() {
 				...v,
 				deliveryContactName: v.billingName,
 				deliveryPhone: v.billingPhone,
+				deliverySecondaryPhone: v.billingSecondaryPhone,
 				deliveryAddress: v.billingAddress,
 			}));
 		}
@@ -1843,14 +1866,20 @@ function TasksPageInner() {
 									</div>
 								</form>
 							) : (
-								<div>
-							<div className="flex flex-wrap items-center justify-between gap-2">
-										<div className="flex items-center gap-2">
-											<span className="text-[10px] w-5 h-5 inline-flex items-center justify-center rounded-full bg-black text-white">{index + 1}</span>
-											<span className="font-medium flex items-center gap-2">
-												{t.title}
-											</span>
+								<details>
+									<summary className="list-none cursor-pointer select-none [&::-webkit-details-marker]:hidden">
+										<div className="flex flex-wrap items-center gap-2">
+											<span className="text-[10px] w-5 h-5 inline-flex items-center justify-center rounded-full bg-black text-white shrink-0">{index + 1}</span>
+											<span className="font-medium">{t.title}</span>
+											<span className={statusChipClass(t.status)}>{STATUS_LABELS[t.status] ?? t.status}</span>
+											<span className={priorityChipClass(t.priority)}>{t.priority}</span>
+											{t.dueAt && <span className="meta">Due {new Date(t.dueAt).toLocaleDateString()}</span>}
+											{t.onboardingStatus === "PENDING" && <span className="chip chip-warn">Onboarding: Pending</span>}
+											{t.onboardingStatus === "SUBMITTED" && <span className="chip chip-ok">Onboarding: Submitted</span>}
 										</div>
+									</summary>
+									<div className="pt-2">
+							<div className="flex flex-wrap items-center justify-end gap-2">
 										<div className="flex gap-2">
 											<select
 												value={t.status}
@@ -1914,7 +1943,6 @@ function TasksPageInner() {
 									<span className="chip chip-plain">Assigned to me</span>
 								)}
 							</div>
-							{t.dueAt && <p className="text-xs text-gray-600 mt-1">Due: {new Date(t.dueAt).toLocaleString()}</p>}
 									<div className="mt-2 flex gap-2">
 										<button
 											type="button"
@@ -2387,7 +2415,8 @@ function TasksPageInner() {
 										})()}
 									</div>
 								</div>
-							)}
+							</details>
+						)}
 						</li>
 						);
 					})}
@@ -2412,6 +2441,7 @@ function TasksPageInner() {
 								<input className="input text-sm" placeholder="Billing name *" required value={onboardingFillValues.billingName} onChange={(e) => updateOnboardingFillValue("billingName", e.target.value)} />
 								<input className="input text-sm" type="email" placeholder="Email" value={onboardingFillValues.billingEmail} onChange={(e) => updateOnboardingFillValue("billingEmail", e.target.value)} />
 								<input className="input text-sm" placeholder="Phone *" required value={onboardingFillValues.billingPhone} onChange={(e) => updateOnboardingFillValue("billingPhone", e.target.value)} />
+								<input className="input text-sm" placeholder="Secondary phone" value={onboardingFillValues.billingSecondaryPhone} onChange={(e) => updateOnboardingFillValue("billingSecondaryPhone", e.target.value)} />
 								<textarea className="input text-sm" rows={2} placeholder="Billing address *" required value={onboardingFillValues.billingAddress} onChange={(e) => updateOnboardingFillValue("billingAddress", e.target.value)} />
 								<input className="input text-sm" placeholder="GSTIN / Tax ID" value={onboardingFillValues.gstin} onChange={(e) => updateOnboardingFillValue("gstin", e.target.value)} />
 							</div>
@@ -2425,6 +2455,7 @@ function TasksPageInner() {
 								</div>
 								<input className="input text-sm" placeholder="Contact name" disabled={fillSameAsBilling} value={onboardingFillValues.deliveryContactName} onChange={(e) => updateOnboardingFillValue("deliveryContactName", e.target.value)} />
 								<input className="input text-sm" placeholder="Delivery phone" disabled={fillSameAsBilling} value={onboardingFillValues.deliveryPhone} onChange={(e) => updateOnboardingFillValue("deliveryPhone", e.target.value)} />
+								<input className="input text-sm" placeholder="Secondary phone" disabled={fillSameAsBilling} value={onboardingFillValues.deliverySecondaryPhone} onChange={(e) => updateOnboardingFillValue("deliverySecondaryPhone", e.target.value)} />
 								<textarea className="input text-sm" rows={2} placeholder="Delivery address *" required disabled={fillSameAsBilling} value={onboardingFillValues.deliveryAddress} onChange={(e) => updateOnboardingFillValue("deliveryAddress", e.target.value)} />
 								<textarea className="input text-sm" rows={2} placeholder="Delivery notes" value={onboardingFillValues.deliveryNotes} onChange={(e) => updateOnboardingFillValue("deliveryNotes", e.target.value)} />
 							</div>
@@ -2461,6 +2492,7 @@ function TasksPageInner() {
 									{row("Billing name", form.billingName)}
 									{row("Email", form.billingEmail)}
 									{row("Phone", form.billingPhone)}
+									{row("Secondary phone", form.billingSecondaryPhone)}
 									{row("Billing address", form.billingAddress)}
 									{row("GSTIN / Tax ID", form.gstin)}
 								</div>
@@ -2468,6 +2500,7 @@ function TasksPageInner() {
 									<h3 className="text-sm font-medium">Delivery details</h3>
 									{row("Contact name", form.deliveryContactName)}
 									{row("Delivery phone", form.deliveryPhone)}
+									{row("Secondary phone", form.deliverySecondaryPhone)}
 									{row("Delivery address", form.deliveryAddress)}
 									{row("Delivery notes", form.deliveryNotes)}
 								</div>

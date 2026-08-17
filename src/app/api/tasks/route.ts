@@ -71,6 +71,15 @@ export async function GET(request: NextRequest) {
 			despatchItems: {
 				orderBy: { order: "asc" }
 			},
+			// Lightweight only — just enough for a quick status badge on the
+			// list without a per-task fetch. Full details still come from the
+			// dedicated onboarding-form endpoint when someone expands it.
+			onboardingForms: {
+				where: { status: { not: "REVOKED" } },
+				orderBy: { createdAt: "desc" },
+				take: 1,
+				select: { status: true }
+			},
 			teamAssignments: {
 				include: { team: { select: { id: true, name: true } } }
 			},

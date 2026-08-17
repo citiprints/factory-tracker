@@ -6,10 +6,12 @@ type FormValues = {
 	billingName: string;
 	billingEmail: string;
 	billingPhone: string;
+	billingSecondaryPhone: string;
 	billingAddress: string;
 	gstin: string;
 	deliveryContactName: string;
 	deliveryPhone: string;
+	deliverySecondaryPhone: string;
 	deliveryAddress: string;
 	deliveryNotes: string;
 };
@@ -18,10 +20,12 @@ const EMPTY_VALUES: FormValues = {
 	billingName: "",
 	billingEmail: "",
 	billingPhone: "",
+	billingSecondaryPhone: "",
 	billingAddress: "",
 	gstin: "",
 	deliveryContactName: "",
 	deliveryPhone: "",
+	deliverySecondaryPhone: "",
 	deliveryAddress: "",
 	deliveryNotes: "",
 };
@@ -63,6 +67,7 @@ export default function OnboardingFormPage({ params }: { params: Promise<{ token
 	const BILLING_TO_DELIVERY: Partial<Record<keyof FormValues, keyof FormValues>> = {
 		billingName: "deliveryContactName",
 		billingPhone: "deliveryPhone",
+		billingSecondaryPhone: "deliverySecondaryPhone",
 		billingAddress: "deliveryAddress",
 	};
 
@@ -84,6 +89,7 @@ export default function OnboardingFormPage({ params }: { params: Promise<{ token
 				...v,
 				deliveryContactName: v.billingName,
 				deliveryPhone: v.billingPhone,
+				deliverySecondaryPhone: v.billingSecondaryPhone,
 				deliveryAddress: v.billingAddress,
 			}));
 		}
@@ -163,6 +169,10 @@ export default function OnboardingFormPage({ params }: { params: Promise<{ token
 								<input className="input" required value={values.billingPhone} onChange={(e) => update("billingPhone", e.target.value)} />
 							</div>
 							<div>
+								<label className="field-label">Secondary phone</label>
+								<input className="input" value={values.billingSecondaryPhone} onChange={(e) => update("billingSecondaryPhone", e.target.value)} />
+							</div>
+							<div>
 								<label className="field-label">Billing address *</label>
 								<textarea className="input" required rows={2} value={values.billingAddress} onChange={(e) => update("billingAddress", e.target.value)} />
 							</div>
@@ -187,6 +197,10 @@ export default function OnboardingFormPage({ params }: { params: Promise<{ token
 							<div>
 								<label className="field-label">Delivery phone</label>
 								<input className="input" disabled={sameAsBilling} value={values.deliveryPhone} onChange={(e) => update("deliveryPhone", e.target.value)} />
+							</div>
+							<div>
+								<label className="field-label">Secondary phone</label>
+								<input className="input" disabled={sameAsBilling} value={values.deliverySecondaryPhone} onChange={(e) => update("deliverySecondaryPhone", e.target.value)} />
 							</div>
 							<div>
 								<label className="field-label">Delivery address *</label>

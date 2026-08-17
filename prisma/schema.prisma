@@ -211,16 +211,18 @@ model OnboardingForm {
   status    String   @default("PENDING") // PENDING | SUBMITTED | REVOKED
   expiresAt DateTime
 
-  billingName    String?
-  billingEmail   String?
-  billingPhone   String?
-  billingAddress String?
-  gstin          String?
+  billingName            String?
+  billingEmail           String?
+  billingPhone           String?
+  billingSecondaryPhone  String?
+  billingAddress         String?
+  gstin                  String?
 
-  deliveryContactName String?
-  deliveryPhone       String?
-  deliveryAddress     String?
-  deliveryNotes       String?
+  deliveryContactName    String?
+  deliveryPhone          String?
+  deliverySecondaryPhone String?
+  deliveryAddress        String?
+  deliveryNotes          String?
 
   submittedAt     DateTime?
   filledByStaffId String?
