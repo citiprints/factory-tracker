@@ -36,6 +36,7 @@ export default function OnboardingFormPage({ params }: { params: Promise<{ token
 	const { token } = use(params);
 	const [state, setState] = useState<LoadState>({ kind: "loading" });
 	const [values, setValues] = useState<FormValues>(EMPTY_VALUES);
+	const [sameAsBilling, setSameAsBilling] = useState(false);
 	const [submitting, setSubmitting] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 
@@ -59,8 +60,33 @@ export default function OnboardingFormPage({ params }: { params: Promise<{ token
 			.catch(() => setState({ kind: "error", message: "Something went wrong loading this form." }));
 	}, [token]);
 
+	const BILLING_TO_DELIVERY: Partial<Record<keyof FormValues, keyof FormValues>> = {
+		billingName: "deliveryContactName",
+		billingPhone: "deliveryPhone",
+		billingAddress: "deliveryAddress",
+	};
+
 	function update<K extends keyof FormValues>(key: K, value: string) {
-		setValues((v) => ({ ...v, [key]: value }));
+		setValues((v) => {
+			const next = { ...v, [key]: value };
+			// While mirroring billing, keep the delivery side in lockstep so
+			// the customer doesn't have to notice they've drifted apart.
+			const mirrored = sameAsBilling && BILLING_TO_DELIVERY[key];
+			if (mirrored) (next as any)[mirrored] = value;
+			return next;
+		});
+	}
+
+	function toggleSameAsBilling(checked: boolean) {
+		setSameAsBilling(checked);
+		if (checked) {
+			setValues((v) => ({
+				...v,
+				deliveryContactName: v.billingName,
+				deliveryPhone: v.billingPhone,
+				deliveryAddress: v.billingAddress,
+			}));
+		}
 	}
 
 	async function onSubmit(e: React.FormEvent) {
@@ -133,8 +159,8 @@ export default function OnboardingFormPage({ params }: { params: Promise<{ token
 								<input className="input" type="email" value={values.billingEmail} onChange={(e) => update("billingEmail", e.target.value)} />
 							</div>
 							<div>
-								<label className="field-label">Phone</label>
-								<input className="input" value={values.billingPhone} onChange={(e) => update("billingPhone", e.target.value)} />
+								<label className="field-label">Phone *</label>
+								<input className="input" required value={values.billingPhone} onChange={(e) => update("billingPhone", e.target.value)} />
 							</div>
 							<div>
 								<label className="field-label">Billing address *</label>
@@ -147,18 +173,24 @@ export default function OnboardingFormPage({ params }: { params: Promise<{ token
 						</div>
 
 						<div className="space-y-3">
-							<h2 className="text-sm font-medium">Delivery details</h2>
+							<div className="flex items-center justify-between">
+								<h2 className="text-sm font-medium">Delivery details</h2>
+								<label className="flex items-center gap-2 text-sm text-muted">
+									<input type="checkbox" checked={sameAsBilling} onChange={(e) => toggleSameAsBilling(e.target.checked)} />
+									Same as billing
+								</label>
+							</div>
 							<div>
 								<label className="field-label">Contact name</label>
-								<input className="input" value={values.deliveryContactName} onChange={(e) => update("deliveryContactName", e.target.value)} />
+								<input className="input" disabled={sameAsBilling} value={values.deliveryContactName} onChange={(e) => update("deliveryContactName", e.target.value)} />
 							</div>
 							<div>
 								<label className="field-label">Delivery phone</label>
-								<input className="input" value={values.deliveryPhone} onChange={(e) => update("deliveryPhone", e.target.value)} />
+								<input className="input" disabled={sameAsBilling} value={values.deliveryPhone} onChange={(e) => update("deliveryPhone", e.target.value)} />
 							</div>
 							<div>
 								<label className="field-label">Delivery address *</label>
-								<textarea className="input" required rows={2} value={values.deliveryAddress} onChange={(e) => update("deliveryAddress", e.target.value)} />
+								<textarea className="input" required rows={2} disabled={sameAsBilling} value={values.deliveryAddress} onChange={(e) => update("deliveryAddress", e.target.value)} />
 							</div>
 							<div>
 								<label className="field-label">Delivery notes</label>

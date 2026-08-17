@@ -10,6 +10,7 @@ const UpdateDespatchItemSchema = z.object({
 	unit: z.string().min(1).optional(),
 	status: z.enum(DESPATCH_ITEM_STATUSES).optional(),
 	order: z.number().int().optional(),
+	specFields: z.record(z.string(), z.any()).optional(),
 });
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -29,6 +30,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 				...("unit" in data ? { unit: data.unit! } : {}),
 				...("status" in data ? { status: data.status as any } : {}),
 				...("order" in data ? { order: data.order } : {}),
+				...("specFields" in data ? { specFields: JSON.stringify(data.specFields ?? {}) } : {}),
 			},
 		});
 

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser, isAdmin } from "@/lib/session";
 import { notifyUser } from "@/lib/notify";
+import { assignTeamToTask, unassignTeamFromTask } from "@/lib/teams";
 import { TASK_STATUSES, TASK_PRIORITIES } from "@/lib/constants";
 import { z } from "zod";
 import { S3Client, DeleteObjectCommand } from "@aws-sdk/client-s3";
@@ -30,6 +31,7 @@ const UpdateTaskSchema = z.object({
 	customerId: z.string().optional(),
 	assigneeId: z.string().optional(),
 	assigneeIds: z.array(z.string()).optional(),
+	teamIds: z.array(z.string()).optional(),
 	customFields: z.any().optional(),
 });
 
@@ -54,6 +56,9 @@ export async function GET(
 					},
 				},
 				subtasks: true,
+				teamAssignments: {
+					include: { team: { select: { id: true, name: true } } },
+				},
 			},
 		});
 
@@ -119,7 +124,7 @@ export async function PATCH(
 			};
 		}
 
-		const { assigneeId, assigneeIds, ...taskFields } = validatedData;
+		const { assigneeId, assigneeIds, teamIds, ...taskFields } = validatedData;
 		const nextAssigneeIds =
 			assigneeIds !== undefined
 				? Array.from(new Set(assigneeIds))
@@ -162,6 +167,9 @@ export async function PATCH(
 					},
 				},
 				subtasks: true,
+				teamAssignments: {
+					include: { team: { select: { id: true, name: true } } },
+				},
 			},
 		});
 
@@ -175,6 +183,22 @@ export async function PATCH(
 				type: "TASK_ASSIGNED",
 				linkPath: `/tasks?open=${task.id}`,
 			}).catch(() => {});
+		}
+
+		if (teamIds !== undefined) {
+			const currentTeams = await prisma.taskTeamAssignment.findMany({
+				where: { taskId: id },
+				select: { teamId: true },
+			});
+			const currentTeamIds = new Set(currentTeams.map((t) => t.teamId));
+			const nextTeamIds = new Set(teamIds);
+
+			for (const teamId of currentTeamIds) {
+				if (!nextTeamIds.has(teamId)) await unassignTeamFromTask(id, teamId);
+			}
+			for (const teamId of nextTeamIds) {
+				if (!currentTeamIds.has(teamId)) await assignTeamToTask(id, teamId, task.title);
+			}
 		}
 
 		return NextResponse.json({ task });
@@ -285,6 +309,11 @@ export async function DELETE(
 			}),
 			// Delete onboarding forms
 			prisma.onboardingForm.deleteMany({
+				where: { taskId: id }
+			}),
+			// Delete team assignments (materialized Assignment rows are
+			// already covered by the assignment.deleteMany above)
+			prisma.taskTeamAssignment.deleteMany({
 				where: { taskId: id }
 			}),
 			// Finally delete the task

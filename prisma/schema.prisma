@@ -44,6 +44,8 @@ model User {
   onboardingFormsFilled  OnboardingForm[] @relation("OnboardingFormFilledBy")
   onboardingFormsCreated OnboardingForm[] @relation("OnboardingFormCreatedBy")
 
+  teamMemberships TeamMember[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -168,6 +170,7 @@ model Task {
   shifts          Shift[]
   despatchItems   DespatchItem[]
   onboardingForms OnboardingForm[]
+  teamAssignments TaskTeamAssignment[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -184,11 +187,12 @@ model DespatchItem {
   taskId String
   task   Task   @relation(fields: [taskId], references: [id])
 
-  name     String
-  quantity Float
-  unit     String @default("pcs")
-  status   String @default("PENDING") // PENDING | PACKED | DISPATCHED | DELIVERED
-  order    Int    @default(0)
+  name       String
+  quantity   Float
+  unit       String  @default("pcs")
+  status     String  @default("PENDING") // PENDING | PACKED | DISPATCHED | DELIVERED
+  order      Int     @default(0)
+  specFields String? // JSON: { category, and category-specific spec keys }
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -307,7 +311,54 @@ model Assignment {
   task Task @relation(fields: [taskId], references: [id])
   user User @relation(fields: [userId], references: [id])
 
+  // Set when this row was materialized from a team assignment (as opposed
+  // to assigning this person directly) — lets team (un)assignment and
+  // membership changes find and clean up exactly the rows they created.
+  viaTeamId String?
+  viaTeam   Team?   @relation(fields: [viaTeamId], references: [id])
+
   createdAt DateTime @default(now())
+}
+
+// A group of users (Accounts, Production, Pre-Production, Delivery, ...)
+// that can be assigned to a task as a unit and @mentioned in comments.
+model Team {
+  id    String @id @default(cuid())
+  name  String @unique
+  order Int    @default(0)
+
+  members         TeamMember[]
+  taskAssignments TaskTeamAssignment[]
+  assignments     Assignment[]
+
+  createdAt DateTime @default(now())
+}
+
+model TeamMember {
+  id     String @id @default(cuid())
+  teamId String
+  team   Team   @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@unique([teamId, userId])
+}
+
+// A team assigned to a task — every current member gets a materialized
+// Assignment row (see Assignment.viaTeamId) so existing per-user access
+// checks work unchanged for team members.
+model TaskTeamAssignment {
+  id     String @id @default(cuid())
+  taskId String
+  task   Task   @relation(fields: [taskId], references: [id])
+  teamId String
+  team   Team   @relation(fields: [teamId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@unique([taskId, teamId])
 }
 
 model Comment {

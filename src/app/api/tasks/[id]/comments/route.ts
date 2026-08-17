@@ -54,9 +54,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 	});
 
 	// Notify everyone else on the task (assignees + creator), not the author.
-	const [assignments, taskRow] = await Promise.all([
+	const [assignments, taskRow, teams] = await Promise.all([
 		prisma.assignment.findMany({ where: { taskId: id }, select: { userId: true, user: { select: { name: true } } } }),
 		prisma.task.findUnique({ where: { id }, select: { createdById: true, createdBy: { select: { name: true } } } }),
+		prisma.team.findMany({ include: { members: { select: { userId: true } } } }),
 	]);
 	const recipients = new Map<string, string>(assignments.map((a) => [a.userId, a.user.name]));
 	if (taskRow?.createdById) recipients.set(taskRow.createdById, taskRow.createdBy?.name ?? "");
@@ -69,8 +70,20 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 		[...recipients.values()].filter((name) => name && new RegExp(`@${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`).test(parsed.data.body))
 	);
 
-	for (const [uid, name] of recipients) {
-		const mentioned = mentionedNames.has(name);
+	// @TeamName notifies every member of that team, even if the team isn't
+	// assigned to this task and its members have no other access to it.
+	const mentionedViaTeam = new Set<string>();
+	for (const team of teams) {
+		const pattern = new RegExp(`@${team.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`);
+		if (!pattern.test(parsed.data.body)) continue;
+		for (const member of team.members) {
+			if (member.userId !== user.id) mentionedViaTeam.add(member.userId);
+		}
+	}
+
+	const allRecipientIds = new Set([...recipients.keys(), ...mentionedViaTeam]);
+	for (const uid of allRecipientIds) {
+		const mentioned = mentionedNames.has(recipients.get(uid) ?? "") || mentionedViaTeam.has(uid);
 		await notifyUser({
 			userId: uid,
 			title: mentioned ? `${user.name} mentioned you` : `${user.name} commented`,

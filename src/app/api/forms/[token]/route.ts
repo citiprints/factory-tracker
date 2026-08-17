@@ -52,15 +52,13 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ token:
 const SubmitOnboardingFormSchema = z.object({
 	billingName: z.string().min(1),
 	billingEmail: z.string().email().optional().or(z.literal("")),
-	billingPhone: z.string().optional(),
+	billingPhone: z.string().min(1, "Phone number is required"),
 	billingAddress: z.string().min(1),
 	gstin: z.string().optional(),
 	deliveryContactName: z.string().optional(),
 	deliveryPhone: z.string().optional(),
 	deliveryAddress: z.string().min(1),
 	deliveryNotes: z.string().optional(),
-}).refine((d) => d.billingEmail || d.billingPhone || d.deliveryPhone, {
-	message: "Please provide at least one phone number or email.",
 });
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ token: string }> }) {

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/session";
 import { notifyUser } from "@/lib/notify";
+import { assignTeamToTask } from "@/lib/teams";
 import { TASK_STATUSES, TASK_PRIORITIES } from "@/lib/constants";
 import { z } from "zod";
 
@@ -19,6 +20,7 @@ const CreateTaskSchema = z.object({
 	customFields: z.any().optional(),
 	assigneeId: z.string().optional(),
 	assigneeIds: z.array(z.string()).optional(),
+	teamIds: z.array(z.string()).optional(),
 });
 
 export async function GET(request: NextRequest) {
@@ -68,6 +70,9 @@ export async function GET(request: NextRequest) {
 			},
 			despatchItems: {
 				orderBy: { order: "asc" }
+			},
+			teamAssignments: {
+				include: { team: { select: { id: true, name: true } } }
 			},
 			customerRef: {
 				select: {
@@ -138,6 +143,10 @@ export async function POST(request: Request) {
 				type: "TASK_ASSIGNED",
 				linkPath: `/tasks?open=${task.id}`,
 			});
+		}
+
+		for (const teamId of data.teamIds ?? []) {
+			await assignTeamToTask(task.id, teamId, task.title);
 		}
 
 		return NextResponse.json({ task }, { status: 201 });

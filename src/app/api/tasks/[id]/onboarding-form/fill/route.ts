@@ -8,7 +8,7 @@ import { z } from "zod";
 const FillOnboardingFormSchema = z.object({
 	billingName: z.string().min(1),
 	billingEmail: z.string().email().optional().or(z.literal("")),
-	billingPhone: z.string().optional(),
+	billingPhone: z.string().min(1, "Phone number is required"),
 	billingAddress: z.string().min(1),
 	gstin: z.string().optional(),
 	deliveryContactName: z.string().optional(),

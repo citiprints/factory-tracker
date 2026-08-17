@@ -21,12 +21,15 @@ type Task = {
 	jobNumber?: string | null;
 	customFields?: any;
 	assignments?: { id: string; user: { id: string; name: string }; role: string }[];
+	teamAssignments?: { id: string; team: { id: string; name: string } }[];
 	createdBy?: { id: string; name: string } | null;
 	subtasks?: Subtask[];
 	despatchItems?: DespatchItem[];
 	createdAt: string;
 	updatedAt: string;
 };
+
+type Team = { id: string; name: string };
 
 type Subtask = {
 	id: string;
@@ -45,6 +48,7 @@ type DespatchItem = {
 	unit: string;
 	status: "PENDING" | "PACKED" | "DISPATCHED" | "DELIVERED";
 	order: number;
+	specFields?: Record<string, any> | null;
 };
 
 type OnboardingForm = {
@@ -54,6 +58,15 @@ type OnboardingForm = {
 	expiresAt: string;
 	submittedAt?: string | null;
 	filledByStaff?: { id: string; name: string } | null;
+	billingName?: string | null;
+	billingEmail?: string | null;
+	billingPhone?: string | null;
+	billingAddress?: string | null;
+	gstin?: string | null;
+	deliveryContactName?: string | null;
+	deliveryPhone?: string | null;
+	deliveryAddress?: string | null;
+	deliveryNotes?: string | null;
 };
 
 
@@ -117,7 +130,6 @@ function TasksPageInner() {
 	const searchParams = useSearchParams();
 	const [tasks, setTasks] = useState<Task[]>([]);
 	const [loading, setLoading] = useState(true);
-	const [categoryFilter, setCategoryFilter] = useState<string>("all");
 	const [paymentFilter, setPaymentFilter] = useState<string>("all");
 	const [assignedToMeOnly, setAssignedToMeOnly] = useState<boolean>(false);
 	const [title, setTitle] = useState("");
@@ -169,6 +181,8 @@ function TasksPageInner() {
 	const [newCustomerCompany, setNewCustomerCompany] = useState("");
 	const [newCustomerAddress, setNewCustomerAddress] = useState("");
 	const [assigneeIds, setAssigneeIds] = useState<string[]>([]);
+	const [teams, setTeams] = useState<Team[]>([]);
+	const [teamIds, setTeamIds] = useState<string[]>([]);
 	const [isQuotation, setIsQuotation] = useState<boolean>(false);
 	const [files, setFiles] = useState<File[]>([]);
 	const [dragActive, setDragActive] = useState(false);
@@ -187,13 +201,24 @@ function TasksPageInner() {
 	const [editSubtaskDueAt, setEditSubtaskDueAt] = useState<string>("");
 	const [editSubtaskEstimatedHours, setEditSubtaskEstimatedHours] = useState<number | null>(null);
 
-	// Despatch list rows collected while creating a task (posted after the
+	// Items list rows collected while creating a task (posted after the
 	// task itself is created, same two-step pattern as subtasks/attachments).
-	const [despatchDraft, setDespatchDraft] = useState<{ name: string; quantity: string; unit: string }[]>([]);
+	type DespatchDraftRow = { name: string; quantity: string; unit: string; category: string; specFields: Record<string, any> };
+	const [despatchDraft, setDespatchDraft] = useState<DespatchDraftRow[]>([]);
 	const [addingDespatchItemToTaskId, setAddingDespatchItemToTaskId] = useState<string | null>(null);
 	const [newDespatchName, setNewDespatchName] = useState("");
 	const [newDespatchQuantity, setNewDespatchQuantity] = useState("");
 	const [newDespatchUnit, setNewDespatchUnit] = useState("pcs");
+	const [newDespatchCategory, setNewDespatchCategory] = useState("");
+	const [newDespatchSpecFields, setNewDespatchSpecFields] = useState<Record<string, any>>({});
+
+	// Editing an existing item's name/qty/unit/category/specs.
+	const [editingDespatchItemId, setEditingDespatchItemId] = useState<string | null>(null);
+	const [editDespatchName, setEditDespatchName] = useState("");
+	const [editDespatchQuantity, setEditDespatchQuantity] = useState("");
+	const [editDespatchUnit, setEditDespatchUnit] = useState("pcs");
+	const [editDespatchCategory, setEditDespatchCategory] = useState("");
+	const [editDespatchSpecFields, setEditDespatchSpecFields] = useState<Record<string, any>>({});
 
 	// Onboarding form: latest form per task, loaded lazily when a task card
 	// is expanded, plus state for the "fill in manually" modal.
@@ -204,9 +229,11 @@ function TasksPageInner() {
 		billingName: "", billingEmail: "", billingPhone: "", billingAddress: "", gstin: "",
 		deliveryContactName: "", deliveryPhone: "", deliveryAddress: "", deliveryNotes: "",
 	});
+	const [fillSameAsBilling, setFillSameAsBilling] = useState(false);
+	const [viewingOnboardingTaskId, setViewingOnboardingTaskId] = useState<string | null>(null);
 
 	const AUTO_REFRESH_SECONDS = 120;
-	const [groupBy, setGroupBy] = useState<"none"|"category"|"customer"|"status"|"assignee">("none");
+	const [groupBy, setGroupBy] = useState<"none"|"customer"|"status"|"assignee">("none");
 	const [selectedIds, setSelectedIds] = useState<string[]>([]);
 	const [anyDatePickerOpen, setAnyDatePickerOpen] = useState(false);
 	const countdownRef = useRef(AUTO_REFRESH_SECONDS);
@@ -302,11 +329,12 @@ function TasksPageInner() {
 	async function load() {
 		setLoading(true);
 		try {
-			const [resTasks, resCustomers, resUsers, resCategories] = await Promise.all([
+			const [resTasks, resCustomers, resUsers, resCategories, resTeams] = await Promise.all([
 				fetch("/api/tasks?limit=100&includeArchived=false&includeQuotations=false"),
 				fetch("/api/customers"),
 				fetch("/api/users"),
-				fetch("/api/categories")
+				fetch("/api/categories"),
+				fetch("/api/teams")
 			]);
 			
 		if (resTasks.ok) {
@@ -314,7 +342,10 @@ function TasksPageInner() {
 				const loaded: Task[] = (json.tasks ?? []).map((t: any) => ({
 					...t,
 					subtasks: t.subtasks ?? [],
-					despatchItems: t.despatchItems ?? [],
+					despatchItems: (t.despatchItems ?? []).map((d: any) => ({
+						...d,
+						specFields: typeof d.specFields === "string" ? (() => { try { return JSON.parse(d.specFields); } catch { return {}; } })() : (d.specFields || {})
+					})),
 					customFields: typeof t.customFields === "string" ? (() => { try { return JSON.parse(t.customFields); } catch { return {}; } })() : (t.customFields || {})
 				}));
 				setTasks(loaded);
@@ -333,6 +364,11 @@ function TasksPageInner() {
 			if (resUsers.ok) {
 				const json = await resUsers.json();
 				setUsers((json.users ?? []).map((u: any) => ({ id: u.id, name: u.name })));
+			}
+
+			if (resTeams.ok) {
+				const json = await resTeams.json();
+				setTeams((json.teams ?? []).map((t: any) => ({ id: t.id, name: t.name })));
 			}
 		} catch (error) {
 			console.error("Failed to load data:", error);
@@ -382,9 +418,8 @@ function TasksPageInner() {
 		return task.assignments.some(assignment => assignment.user.id === currentUser.id);
 	}
 
-	// Derived filtered tasks (category + payment + assigned to me)
+	// Derived filtered tasks (payment + assigned to me)
 	const filteredTasks = tasks
-		.filter(task => categoryFilter === "all" || task.customFields?.category === categoryFilter)
 		.filter(task => {
 			if (paymentFilter === "all") return true;
 			const ps = task.customFields?.paymentStatus || "NO_PAYMENT_RECEIVED";
@@ -398,7 +433,6 @@ function TasksPageInner() {
 
 	function getGroupKey(t: Task): string {
 		switch (groupBy) {
-			case "category": return t.customFields?.category || "Uncategorized";
 			case "customer": return t.customerRef?.name || "No Customer";
 			case "status": return t.status;
 			case "assignee": return (t.assignments && t.assignments[0]?.user?.name) || "Unassigned";
@@ -543,13 +577,25 @@ function TasksPageInner() {
 		}
 	}
 
-	// Despatch list functions
-	function addDespatchDraftRow() {
-		if (!newDespatchName.trim() || !newDespatchQuantity.trim()) return;
-		setDespatchDraft(prev => [...prev, { name: newDespatchName.trim(), quantity: newDespatchQuantity, unit: newDespatchUnit.trim() || "pcs" }]);
+	// Items list functions
+	function resetNewDespatchFields() {
 		setNewDespatchName("");
 		setNewDespatchQuantity("");
 		setNewDespatchUnit("pcs");
+		setNewDespatchCategory("");
+		setNewDespatchSpecFields({});
+	}
+
+	function addDespatchDraftRow() {
+		if (!newDespatchName.trim() || !newDespatchQuantity.trim()) return;
+		setDespatchDraft(prev => [...prev, {
+			name: newDespatchName.trim(),
+			quantity: newDespatchQuantity,
+			unit: newDespatchUnit.trim() || "pcs",
+			category: newDespatchCategory,
+			specFields: newDespatchSpecFields,
+		}]);
+		resetNewDespatchFields();
 	}
 
 	function removeDespatchDraftRow(index: number) {
@@ -563,14 +609,17 @@ function TasksPageInner() {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify({
-				items: [{ name: newDespatchName.trim(), quantity: Number(newDespatchQuantity), unit: newDespatchUnit.trim() || "pcs" }]
+				items: [{
+					name: newDespatchName.trim(),
+					quantity: Number(newDespatchQuantity),
+					unit: newDespatchUnit.trim() || "pcs",
+					specFields: newDespatchCategory ? { ...newDespatchSpecFields, category: newDespatchCategory } : undefined,
+				}]
 			})
 		});
 
 		if (res.ok) {
-			setNewDespatchName("");
-			setNewDespatchQuantity("");
-			setNewDespatchUnit("pcs");
+			resetNewDespatchFields();
 			setAddingDespatchItemToTaskId(null);
 			load();
 		}
@@ -586,9 +635,41 @@ function TasksPageInner() {
 	}
 
 	async function deleteDespatchItem(itemId: string) {
-		if (!confirm("Remove this item from the despatch list?")) return;
+		if (!confirm("Remove this item?")) return;
 		const res = await fetch(`/api/despatch-items/${itemId}`, { method: "DELETE" });
 		if (res.ok) load();
+	}
+
+	function startEditDespatchItem(item: DespatchItem) {
+		setEditingDespatchItemId(item.id);
+		setEditDespatchName(item.name);
+		setEditDespatchQuantity(String(item.quantity));
+		setEditDespatchUnit(item.unit);
+		const { category, ...rest } = item.specFields ?? {};
+		setEditDespatchCategory(category ?? "");
+		setEditDespatchSpecFields(rest);
+	}
+
+	function cancelEditDespatchItem() {
+		setEditingDespatchItemId(null);
+	}
+
+	async function saveDespatchItemEdit(itemId: string) {
+		if (!editDespatchName.trim() || !editDespatchQuantity.trim()) return;
+		const res = await fetch(`/api/despatch-items/${itemId}`, {
+			method: "PATCH",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				name: editDespatchName.trim(),
+				quantity: Number(editDespatchQuantity),
+				unit: editDespatchUnit.trim() || "pcs",
+				specFields: editDespatchCategory ? { ...editDespatchSpecFields, category: editDespatchCategory } : {},
+			})
+		});
+		if (res.ok) {
+			setEditingDespatchItemId(null);
+			load();
+		}
 	}
 
 	// Onboarding form functions
@@ -628,10 +709,38 @@ function TasksPageInner() {
 
 	function openOnboardingFillModal(taskId: string) {
 		setFillingOnboardingTaskId(taskId);
+		setFillSameAsBilling(false);
 		setOnboardingFillValues({
 			billingName: "", billingEmail: "", billingPhone: "", billingAddress: "", gstin: "",
 			deliveryContactName: "", deliveryPhone: "", deliveryAddress: "", deliveryNotes: "",
 		});
+	}
+
+	const FILL_BILLING_TO_DELIVERY: Record<string, string> = {
+		billingName: "deliveryContactName",
+		billingPhone: "deliveryPhone",
+		billingAddress: "deliveryAddress",
+	};
+
+	function updateOnboardingFillValue(key: keyof typeof onboardingFillValues, value: string) {
+		setOnboardingFillValues(v => {
+			const next = { ...v, [key]: value };
+			const mirrored = fillSameAsBilling && FILL_BILLING_TO_DELIVERY[key];
+			if (mirrored) (next as any)[mirrored] = value;
+			return next;
+		});
+	}
+
+	function toggleFillSameAsBilling(checked: boolean) {
+		setFillSameAsBilling(checked);
+		if (checked) {
+			setOnboardingFillValues(v => ({
+				...v,
+				deliveryContactName: v.billingName,
+				deliveryPhone: v.billingPhone,
+				deliveryAddress: v.billingAddress,
+			}));
+		}
 	}
 
 	async function submitOnboardingFill(taskId: string) {
@@ -737,8 +846,9 @@ function TasksPageInner() {
 				startAt: isQuotation ? null : (start ? new Date(start).toISOString() : undefined), 
 				dueAt: isQuotation ? null : (due ? new Date(due).toISOString() : undefined), 
 				customerId: customerId || undefined, 
-				customFields: { ...custom, attachments: uploadedFiles, isQuotation }, 
-				assigneeIds: assigneeIds.length > 0 ? assigneeIds : undefined
+				customFields: { ...custom, attachments: uploadedFiles, isQuotation },
+				assigneeIds: assigneeIds.length > 0 ? assigneeIds : undefined,
+				teamIds: teamIds.length > 0 ? teamIds : undefined
 			})
 		});
 		if (!res.ok) {
@@ -755,7 +865,12 @@ function TasksPageInner() {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
 				body: JSON.stringify({
-					items: despatchDraft.map(d => ({ name: d.name, quantity: Number(d.quantity), unit: d.unit }))
+					items: despatchDraft.map(d => ({
+					name: d.name,
+					quantity: Number(d.quantity),
+					unit: d.unit,
+					specFields: d.category ? { ...d.specFields, category: d.category } : undefined,
+				}))
 				})
 			}).catch(() => {});
 		}
@@ -771,6 +886,7 @@ function TasksPageInner() {
 		setDue("");
 		setCustomerId("");
 		setAssigneeIds([]);
+		setTeamIds([]);
 		setIsQuotation(false);
 		setCustom({});
 		setFiles([]);
@@ -804,6 +920,193 @@ function TasksPageInner() {
 					<input type="date" className="input flex-[3]" value={datePart} onChange={(e) => updateDate(e.target.value)} />
 					<input type="time" className="input flex-[2]" value={timePart} onChange={(e) => updateTime(e.target.value)} />
 				</div>
+			</div>
+		);
+	}
+
+	// Category + spec fields for one item — used by both the "add item" and
+	// "edit item" forms so the ~150 lines of per-category fields exist once,
+	// not tripled the way the old task-level version was.
+	function ItemSpecFields({
+		category,
+		specFields,
+		onCategoryChange,
+		onFieldChange,
+	}: {
+		category: string;
+		specFields: Record<string, any>;
+		onCategoryChange: (next: string) => void;
+		onFieldChange: (key: string, value: any) => void;
+	}) {
+		const f = (key: string) => specFields[key] ?? "";
+		return (
+			<div className="space-y-3">
+				<select className="input text-sm" value={category} onChange={(e) => onCategoryChange(e.target.value)}>
+					<option value="">Select type</option>
+					<option value="Rigid Boxes">Rigid Boxes</option>
+					<option value="Cake Boxes">Cake Boxes</option>
+					<option value="Paper Bags">Paper Bags</option>
+					<option value="Stickers">Stickers</option>
+					<option value="Cards">Cards</option>
+					<option value="Invitation">Invitation</option>
+					<option value="Paperboard Boxes">Paperboard Boxes</option>
+					<option value="Others">Others</option>
+					{dynamicCategories.map(c => (<option key={c.id} value={c.name}>{c.name}</option>))}
+				</select>
+
+				{category === "Rigid Boxes" && (
+					<div className="space-y-3 p-3 border border-line rounded-lg bg-wash">
+						<h3 className="font-medium text-sm">Rigid Box Specifications</h3>
+						<div>
+							<label className="field-label">Box Type</label>
+							<div className="space-y-1">
+								{["Lid & Base", "Magnetic", "Ribbon", "Book", "Custom"].map(type => (
+									<label key={type} className="flex items-center gap-2 text-sm">
+										<input type="radio" name={`boxType-${category}`} value={type} checked={f("boxType") === type} onChange={(e) => onFieldChange("boxType", e.target.value)} />
+										{type}
+									</label>
+								))}
+							</div>
+						</div>
+						<div>
+							<label className="field-label">Size</label>
+							<div className="flex items-center gap-2">
+								<input type="text" className="input flex-1 text-sm" placeholder="Enter size" value={f("size")} onChange={(e) => onFieldChange("size", e.target.value)} />
+								<label className="flex items-center gap-2 text-sm">
+									<input type="checkbox" checked={!!specFields["existingSize"]} onChange={(e) => onFieldChange("existingSize", e.target.checked)} />
+									Existing size
+								</label>
+							</div>
+						</div>
+						<input type="text" className="input text-sm" placeholder="Top Outer" value={f("topOuter")} onChange={(e) => onFieldChange("topOuter", e.target.value)} />
+						<input type="text" className="input text-sm" placeholder="Top Inner" value={f("topInner")} onChange={(e) => onFieldChange("topInner", e.target.value)} />
+						<input type="text" className="input text-sm" placeholder="Bottom Outer" value={f("bottomOuter")} onChange={(e) => onFieldChange("bottomOuter", e.target.value)} />
+						<input type="text" className="input text-sm" placeholder="Bottom Inner" value={f("bottomInner")} onChange={(e) => onFieldChange("bottomInner", e.target.value)} />
+						<div>
+							<label className="flex items-center gap-2 text-sm">
+								<input type="checkbox" checked={!!specFields["hasPartition"]} onChange={(e) => onFieldChange("hasPartition", e.target.checked)} />
+								Partition
+							</label>
+							{specFields["hasPartition"] && (
+								<textarea className="input text-sm mt-2" placeholder="Partition description" value={f("partitionDescription")} onChange={(e) => onFieldChange("partitionDescription", e.target.value)} />
+							)}
+						</div>
+					</div>
+				)}
+
+				{category === "Cake Boxes" && (
+					<div className="space-y-3 p-3 border border-line rounded-lg bg-wash">
+						<h3 className="font-medium text-sm">Cake Box Specifications</h3>
+						<div>
+							<label className="field-label">Size</label>
+							<div className="flex items-center gap-2">
+								<input type="text" className="input flex-1 text-sm" placeholder="Enter size" value={f("size")} onChange={(e) => onFieldChange("size", e.target.value)} />
+								<label className="flex items-center gap-2 text-sm">
+									<input type="checkbox" checked={!!specFields["existingSize"]} onChange={(e) => onFieldChange("existingSize", e.target.checked)} />
+									Existing size
+								</label>
+							</div>
+						</div>
+						<div>
+							<label className="flex items-center gap-2 text-sm">
+								<input type="checkbox" checked={!!specFields["hasWindow"]} onChange={(e) => onFieldChange("hasWindow", e.target.checked)} />
+								Window
+							</label>
+							{specFields["hasWindow"] && (
+								<input type="text" className="input text-sm mt-2" placeholder="Window details" value={f("windowDetails")} onChange={(e) => onFieldChange("windowDetails", e.target.value)} />
+							)}
+						</div>
+						<div>
+							<label className="flex items-center gap-2 text-sm">
+								<input type="checkbox" checked={!!specFields["innerPrinting"]} onChange={(e) => onFieldChange("innerPrinting", e.target.checked)} />
+								Inner Printing
+							</label>
+							{specFields["innerPrinting"] && (
+								<input type="text" className="input text-sm mt-2" placeholder="Inner printing details" value={f("innerPrintingDetails")} onChange={(e) => onFieldChange("innerPrintingDetails", e.target.value)} />
+							)}
+						</div>
+					</div>
+				)}
+
+				{category === "Paper Bags" && (
+					<div className="space-y-3 p-3 border border-line rounded-lg bg-wash">
+						<h3 className="font-medium text-sm">Paper Bag Specifications</h3>
+						<div>
+							<label className="field-label">Size</label>
+							<div className="flex items-center gap-2">
+								<input type="text" className="input flex-1 text-sm" placeholder="Enter size" value={f("size")} onChange={(e) => onFieldChange("size", e.target.value)} />
+								<label className="flex items-center gap-2 text-sm">
+									<input type="checkbox" checked={!!specFields["existingSize"]} onChange={(e) => onFieldChange("existingSize", e.target.checked)} />
+									Existing size
+								</label>
+							</div>
+						</div>
+						<div>
+							<label className="flex items-center gap-2 text-sm">
+								<input type="checkbox" checked={!!specFields["innerPrinting"]} onChange={(e) => onFieldChange("innerPrinting", e.target.checked)} />
+								Inner Printing
+							</label>
+							{specFields["innerPrinting"] && (
+								<input type="text" className="input text-sm mt-2" placeholder="Inner printing details" value={f("innerPrintingDetails")} onChange={(e) => onFieldChange("innerPrintingDetails", e.target.value)} />
+							)}
+						</div>
+						<input type="text" className="input text-sm" placeholder="Rope" value={f("rope")} onChange={(e) => onFieldChange("rope", e.target.value)} />
+					</div>
+				)}
+
+				{category === "Stickers" && (
+					<div className="space-y-3 p-3 border border-line rounded-lg bg-wash">
+						<h3 className="font-medium text-sm">Sticker Specifications</h3>
+						<input type="text" className="input text-sm" placeholder="Size" value={f("size")} onChange={(e) => onFieldChange("size", e.target.value)} />
+						<input type="text" className="input text-sm" placeholder="Shape" value={f("shape")} onChange={(e) => onFieldChange("shape", e.target.value)} />
+						<input type="text" className="input text-sm" placeholder="Material" value={f("material")} onChange={(e) => onFieldChange("material", e.target.value)} />
+					</div>
+				)}
+
+				{category === "Cards" && (
+					<div className="space-y-3 p-3 border border-line rounded-lg bg-wash">
+						<h3 className="font-medium text-sm">Card Specifications</h3>
+						<input type="text" className="input text-sm" placeholder="Size" value={f("size")} onChange={(e) => onFieldChange("size", e.target.value)} />
+						<input type="text" className="input text-sm" placeholder="Sides" value={f("sides")} onChange={(e) => onFieldChange("sides", e.target.value)} />
+						<input type="text" className="input text-sm" placeholder="Material" value={f("material")} onChange={(e) => onFieldChange("material", e.target.value)} />
+					</div>
+				)}
+
+				{category === "Invitation" && (
+					<div className="space-y-3 p-3 border border-line rounded-lg bg-wash">
+						<h3 className="font-medium text-sm">Invitation Specifications</h3>
+						<div>
+							<label className="field-label">Size</label>
+							<div className="flex items-center gap-2">
+								<input type="text" className="input flex-1 text-sm" placeholder="Enter size" value={f("size")} onChange={(e) => onFieldChange("size", e.target.value)} />
+								<label className="flex items-center gap-2 text-sm">
+									<input type="checkbox" checked={!!specFields["existingSize"]} onChange={(e) => onFieldChange("existingSize", e.target.checked)} />
+									Existing size
+								</label>
+							</div>
+						</div>
+						<input type="text" className="input text-sm" placeholder="Material" value={f("material")} onChange={(e) => onFieldChange("material", e.target.value)} />
+						<input type="text" className="input text-sm" placeholder="Envelope" value={f("envelope")} onChange={(e) => onFieldChange("envelope", e.target.value)} />
+					</div>
+				)}
+
+				{dynamicCategories.find(c => c.name === category)?.fields.map(fld => (
+					<div key={fld.id} className="text-sm">
+						<label className="block mb-1">{fld.label}{fld.required && " *"}</label>
+						{fld.type === "TEXT" && (
+							<input className="input text-sm" value={f(fld.key)} onChange={(e) => onFieldChange(fld.key, e.target.value)} />
+						)}
+						{fld.type === "NUMBER" && (
+							<input type="number" className="input text-sm" value={f(fld.key)} onChange={(e) => onFieldChange(fld.key, e.target.valueAsNumber)} />
+						)}
+						{fld.type === "DATE" && (
+							<input type="date" className="input text-sm" value={f(fld.key)} onChange={(e) => onFieldChange(fld.key, e.target.value)} />
+						)}
+						{fld.type === "BOOLEAN" && (
+							<label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={!!specFields[fld.key]} onChange={(e) => onFieldChange(fld.key, e.target.checked)} /> {fld.label}</label>
+						)}
+					</div>
+				))}
 			</div>
 		);
 	}
@@ -842,7 +1145,8 @@ function TasksPageInner() {
 				dueAt: task.dueAt || undefined,
 				customerId: task.customerId || undefined,
 				customFields: task.customFields || {},
-				assigneeIds: task.assignments?.map(a => a.user.id) || undefined
+				assigneeIds: task.assignments?.map(a => a.user.id) || undefined,
+				teamIds: task.teamAssignments?.map(ta => ta.team.id) || undefined
 			};
 			
 			const res = await fetch("/api/tasks", {
@@ -1008,373 +1312,22 @@ function TasksPageInner() {
 							</label>
 						))}
 					</div>
-					
-					<select
-						className="input"
-						value={custom["category"] ?? ""}
-						onChange={e => setCustom({ ...custom, category: e.target.value })}
-					>
-						<option value="">Select type</option>
-						<option value="Rigid Boxes">Rigid Boxes</option>
-						<option value="Cake Boxes">Cake Boxes</option>
-						<option value="Paper Bags">Paper Bags</option>
-						<option value="Stickers">Stickers</option>
-						<option value="Cards">Cards</option>
-						<option value="Invitation">Invitation</option>
-						<option value="Paperboard Boxes">Paperboard Boxes</option>
-						<option value="Others">Others</option>
-						{dynamicCategories.map(c => (<option key={c.id} value={c.name}>{c.name}</option>))}
-					</select>
-					
-					{/* Quantity field */}
-					<input 
-						type="number" 
-						className="input" 
-						placeholder="Quantity" 
-						value={custom["quantity"] ?? ""} 
-						onChange={e => setCustom({ ...custom, quantity: e.target.valueAsNumber || "" })} 
-					/>
 
-					{/* Rigid Box specific fields */}
-					{custom["category"] === "Rigid Boxes" && (
-						<div className="space-y-3 p-3 border border-line rounded-lg bg-wash">
-							<h3 className="font-medium text-sm">Rigid Box Specifications</h3>
-							
-							{/* Box Type - Radio buttons */}
-							<div>
-								<label className="field-label">Box Type</label>
-								<div className="space-y-2">
-									{["Lid & Base", "Magnetic", "Ribbon", "Book", "Custom"].map(type => (
-										<label key={type} className="flex items-center gap-2">
-											<input
-												type="radio"
-												name="boxType"
-												value={type}
-												checked={custom["boxType"] === type}
-												onChange={e => setCustom({ ...custom, boxType: e.target.value })}
-											/>
-											{type}
-										</label>
-									))}
-								</div>
-							</div>
-
-							{/* Size */}
-							<div>
-								<label className="field-label">Size</label>
-								<div className="flex items-center gap-2">
-									<input
-										type="text"
-										className="input flex-1 w-auto"
-										placeholder="Enter size"
-										value={custom["size"] ?? ""}
-										onChange={e => setCustom({ ...custom, size: e.target.value })}
-									/>
-									<label className="flex items-center gap-2 text-sm">
-										<input
-											type="checkbox"
-											checked={custom["existingSize"] ?? false}
-											onChange={e => setCustom({ ...custom, existingSize: e.target.checked })}
-										/>
-										Existing size
-									</label>
-								</div>
-							</div>
-
-							{/* Top Outer */}
-							<input
-								type="text"
-								className="input"
-								placeholder="Top Outer"
-								value={custom["topOuter"] ?? ""}
-								onChange={e => setCustom({ ...custom, topOuter: e.target.value })}
-							/>
-
-							{/* Top Inner */}
-							<input
-								type="text"
-								className="input"
-								placeholder="Top Inner"
-								value={custom["topInner"] ?? ""}
-								onChange={e => setCustom({ ...custom, topInner: e.target.value })}
-							/>
-
-							{/* Bottom Outer */}
-							<input
-								type="text"
-								className="input"
-								placeholder="Bottom Outer"
-								value={custom["bottomOuter"] ?? ""}
-								onChange={e => setCustom({ ...custom, bottomOuter: e.target.value })}
-							/>
-
-							{/* Bottom Inner */}
-							<input
-								type="text"
-								className="input"
-								placeholder="Bottom Inner"
-								value={custom["bottomInner"] ?? ""}
-								onChange={e => setCustom({ ...custom, bottomInner: e.target.value })}
-							/>
-
-							{/* Partition */}
-							<div>
-								<label className="flex items-center gap-2">
+					{teams.length > 0 && (
+						<div className="border border-line-strong rounded-lg p-2.5 max-h-32 overflow-y-auto space-y-1">
+							<div className="field-label !mb-1.5">Teams</div>
+							{teams.map(team => (
+								<label key={team.id} className="flex items-center gap-2 text-sm py-0.5 cursor-pointer">
 									<input
 										type="checkbox"
-										checked={custom["hasPartition"] ?? false}
-										onChange={e => setCustom({ ...custom, hasPartition: e.target.checked })}
+										checked={teamIds.includes(team.id)}
+										onChange={e => setTeamIds(e.target.checked ? [...teamIds, team.id] : teamIds.filter(id => id !== team.id))}
 									/>
-									Partition
+									{team.name}
 								</label>
-								{custom["hasPartition"] && (
-									<textarea
-										className="input mt-2"
-										placeholder="Partition description"
-										value={custom["partitionDescription"] ?? ""}
-										onChange={e => setCustom({ ...custom, partitionDescription: e.target.value })}
-									/>
-								)}
-							</div>
+							))}
 						</div>
 					)}
-
-					{custom["category"] === "Cake Boxes" && (
-						<div className="space-y-3 p-3 border border-line rounded-lg bg-wash">
-							<h3 className="font-medium text-sm">Cake Box Specifications</h3>
-							<div>
-								<label className="field-label">Size</label>
-								<div className="flex items-center gap-2">
-									<input
-										type="text"
-										className="input flex-1 w-auto"
-										placeholder="Enter size"
-										value={custom["size"] ?? ""}
-										onChange={e => setCustom({ ...custom, size: e.target.value })}
-									/>
-									<label className="flex items-center gap-2 text-sm">
-										<input
-											type="checkbox"
-											checked={custom["existingSize"] ?? false}
-											onChange={e => setCustom({ ...custom, existingSize: e.target.checked })}
-										/>
-										Existing size
-									</label>
-								</div>
-							</div>
-							<div>
-								<label className="flex items-center gap-2">
-									<input
-										type="checkbox"
-										checked={custom["hasWindow"] ?? false}
-										onChange={e => setCustom({ ...custom, hasWindow: e.target.checked })}
-									/>
-									Window
-								</label>
-								{custom["hasWindow"] && (
-									<input
-										type="text"
-										className="input mt-2"
-										placeholder="Window details"
-										value={custom["windowDetails"] ?? ""}
-										onChange={e => setCustom({ ...custom, windowDetails: e.target.value })}
-									/>
-								)}
-							</div>
-							<div>
-								<label className="flex items-center gap-2">
-									<input
-										type="checkbox"
-										checked={custom["innerPrinting"] ?? false}
-										onChange={e => setCustom({ ...custom, innerPrinting: e.target.checked })}
-									/>
-									Inner Printing
-								</label>
-								{custom["innerPrinting"] && (
-									<input
-										type="text"
-										className="input mt-2"
-										placeholder="Inner printing details"
-										value={custom["innerPrintingDetails"] ?? ""}
-										onChange={e => setCustom({ ...custom, innerPrintingDetails: e.target.value })}
-									/>
-								)}
-							</div>
-						</div>
-					)}
-
-					{custom["category"] === "Paper Bags" && (
-						<div className="space-y-3 p-3 border border-line rounded-lg bg-wash">
-							<h3 className="font-medium text-sm">Paper Bag Specifications</h3>
-							<div>
-								<label className="field-label">Size</label>
-								<div className="flex items-center gap-2">
-									<input
-										type="text"
-										className="input flex-1 w-auto"
-										placeholder="Enter size"
-										value={custom["size"] ?? ""}
-										onChange={e => setCustom({ ...custom, size: e.target.value })}
-									/>
-									<label className="flex items-center gap-2 text-sm">
-										<input
-											type="checkbox"
-											checked={custom["existingSize"] ?? false}
-											onChange={e => setCustom({ ...custom, existingSize: e.target.checked })}
-										/>
-										Existing size
-									</label>
-								</div>
-							</div>
-							<div>
-								<label className="flex items-center gap-2">
-									<input
-										type="checkbox"
-										checked={custom["innerPrinting"] ?? false}
-										onChange={e => setCustom({ ...custom, innerPrinting: e.target.checked })}
-									/>
-									Inner Printing
-								</label>
-								{custom["innerPrinting"] && (
-									<input
-										type="text"
-										className="input mt-2"
-										placeholder="Inner printing details"
-										value={custom["innerPrintingDetails"] ?? ""}
-										onChange={e => setCustom({ ...custom, innerPrintingDetails: e.target.value })}
-									/>
-								)}
-							</div>
-							<input
-								type="text"
-								className="input"
-								placeholder="Rope details"
-								value={custom["rope"] ?? ""}
-								onChange={e => setCustom({ ...custom, rope: e.target.value })}
-							/>
-						</div>
-					)}
-
-					{custom["category"] === "Stickers" && (
-						<div className="space-y-3 p-3 border border-line rounded-lg bg-wash">
-							<h3 className="font-medium text-sm">Sticker Specifications</h3>
-							<input
-								type="text"
-								className="input"
-								placeholder="Size"
-								value={custom["size"] ?? ""}
-								onChange={e => setCustom({ ...custom, size: e.target.value })}
-							/>
-							<div className="grid grid-cols-2 gap-3">
-								<div>
-									<label className="field-label">Shape</label>
-									<select
-										className="input"
-										value={custom["shape"] ?? "Rectangle"}
-										onChange={e => setCustom({ ...custom, shape: e.target.value })}
-									>
-										<option>Rectangle</option>
-										<option>Circle</option>
-										<option>Custom</option>
-									</select>
-								</div>
-								<div>
-									<label className="field-label">Material</label>
-									<select
-										className="input"
-										value={custom["material"] ?? "Artsticker"}
-										onChange={e => setCustom({ ...custom, material: e.target.value })}
-									>
-										<option>Artsticker</option>
-										<option>Transparent</option>
-										<option>Chrome</option>
-										<option>Synthetic</option>
-									</select>
-								</div>
-							</div>
-						</div>
-					)}
-
-					{custom["category"] === "Cards" && (
-						<div className="space-y-3 p-3 border border-line rounded-lg bg-wash">
-							<h3 className="font-medium text-sm">Card Specifications</h3>
-							<input
-								type="text"
-								className="input"
-								placeholder="Size"
-								value={custom["size"] ?? ""}
-								onChange={e => setCustom({ ...custom, size: e.target.value })}
-							/>
-							<div>
-								<label className="field-label">Sides</label>
-								<div className="flex items-center gap-4">
-									<label className="flex items-center gap-2 text-sm">
-										<input
-											type="radio"
-											name="cardSides"
-											value="single"
-											checked={(custom["sides"] ?? "single") === "single"}
-											onChange={() => setCustom({ ...custom, sides: "single" })}
-										/>
-										Single side
-									</label>
-									<label className="flex items-center gap-2 text-sm">
-										<input
-											type="radio"
-											name="cardSides"
-											value="double"
-											checked={custom["sides"] === "double"}
-											onChange={() => setCustom({ ...custom, sides: "double" })}
-										/>
-										Double side
-									</label>
-								</div>
-							</div>
-							<input
-								type="text"
-								className="input"
-								placeholder="Material"
-								value={custom["material"] ?? ""}
-								onChange={e => setCustom({ ...custom, material: e.target.value })}
-							/>
-						</div>
-					)}
-
-					{custom["category"] === "Invitation" && (
-						<div className="space-y-3 p-3 border border-line rounded-lg bg-wash">
-							<h3 className="font-medium text-sm">Invitation Specifications</h3>
-							<div>
-								<label className="field-label">Size</label>
-								<div className="flex items-center gap-2">
-									<input type="text" className="input flex-1 w-auto" placeholder="Enter size" value={custom["size"] ?? ""} onChange={e => setCustom({ ...custom, size: e.target.value })} />
-									<label className="flex items-center gap-2 text-sm">
-										<input type="checkbox" checked={custom["existingSize"] ?? false} onChange={e => setCustom({ ...custom, existingSize: e.target.checked })} />
-										Existing size
-									</label>
-								</div>
-							</div>
-							<input type="text" className="input" placeholder="Material" value={custom["material"] ?? ""} onChange={e => setCustom({ ...custom, material: e.target.value })} />
-							<input type="text" className="input" placeholder="Envelope" value={custom["envelope"] ?? ""} onChange={e => setCustom({ ...custom, envelope: e.target.value })} />
-						</div>
-					)}
-
-					{dynamicCategories.find(c => c.name === custom["category"])?.fields.map(f => (
-						<div key={f.id} className="text-sm">
-							<label className="block mb-1">{f.label}{f.required && " *"}</label>
-							{f.type === "TEXT" && (
-								<input className="input" value={custom[f.key] ?? ""} onChange={e => setCustom({ ...custom, [f.key]: e.target.value })} />
-							)}
-							{f.type === "NUMBER" && (
-								<input type="number" className="input" value={custom[f.key] ?? ""} onChange={e => setCustom({ ...custom, [f.key]: e.target.valueAsNumber })} />
-							)}
-							{f.type === "DATE" && (
-								<input type="date" className="input" value={custom[f.key] ?? ""} onChange={e => setCustom({ ...custom, [f.key]: e.target.value })} />
-							)}
-							{f.type === "BOOLEAN" && (
-								<label className="flex items-center gap-2"><input type="checkbox" checked={!!custom[f.key]} onChange={e => setCustom({ ...custom, [f.key]: e.target.checked })} /> {f.label}</label>
-							)}
-						</div>
-					))}
 
 					{!isQuotation && (
 						<>
@@ -1426,23 +1379,31 @@ function TasksPageInner() {
 						</div>
 					)}
 
-					{/* Despatch list */}
+					{/* Items list */}
 					<div className="space-y-2">
-						<h4 className="text-sm font-medium">Despatch list</h4>
+						<h4 className="text-sm font-medium">Items</h4>
 						{despatchDraft.length > 0 && (
 							<div className="space-y-1.5">
 								{despatchDraft.map((row, index) => (
 									<div key={index} className="flex flex-wrap items-center justify-between gap-2 p-2.5 bg-wash rounded-lg">
-										<span className="text-sm">{row.name} — {row.quantity} {row.unit}</span>
+										<span className="text-sm">{row.name} — {row.quantity} {row.unit}{row.category ? ` · ${row.category}` : ""}</span>
 										<button type="button" onClick={() => removeDespatchDraftRow(index)} className="text-red-600 text-sm">Remove</button>
 									</div>
 								))}
 							</div>
 						)}
-						<div className="flex flex-wrap gap-2">
-							<input className="input flex-[3] min-w-[8rem]" placeholder="Item name" value={newDespatchName} onChange={(e) => setNewDespatchName(e.target.value)} />
-							<input className="input flex-1 min-w-[5rem]" type="number" min="0" step="any" placeholder="Qty" value={newDespatchQuantity} onChange={(e) => setNewDespatchQuantity(e.target.value)} />
-							<input className="input flex-1 min-w-[5rem]" placeholder="Unit" value={newDespatchUnit} onChange={(e) => setNewDespatchUnit(e.target.value)} />
+						<div className="space-y-2 p-3 border border-line rounded-lg bg-wash">
+							<div className="flex flex-wrap gap-2">
+								<input className="input flex-[3] min-w-[8rem]" placeholder="Item name" value={newDespatchName} onChange={(e) => setNewDespatchName(e.target.value)} />
+								<input className="input flex-1 min-w-[5rem]" type="number" min="0" step="any" placeholder="Qty" value={newDespatchQuantity} onChange={(e) => setNewDespatchQuantity(e.target.value)} />
+								<input className="input flex-1 min-w-[5rem]" placeholder="Unit" value={newDespatchUnit} onChange={(e) => setNewDespatchUnit(e.target.value)} />
+							</div>
+							<ItemSpecFields
+								category={newDespatchCategory}
+								specFields={newDespatchSpecFields}
+								onCategoryChange={setNewDespatchCategory}
+								onFieldChange={(key, value) => setNewDespatchSpecFields(v => ({ ...v, [key]: value }))}
+							/>
 							<button type="button" className="btn btn-outline btn-sm" onClick={addDespatchDraftRow}>+ Add item</button>
 						</div>
 					</div>
@@ -1540,25 +1501,6 @@ function TasksPageInner() {
 				<div className="mb-4 flex items-end justify-between gap-4">
 					<div className="flex flex-wrap items-end gap-4">
 						<div>
-							<label className="field-label">Filter by Category:</label>
-							<select 
-								value={categoryFilter} 
-								onChange={(e) => setCategoryFilter(e.target.value)}
-								className="btn btn-outline btn-sm"
-							>
-								<option value="all">All Categories</option>
-								<option value="Rigid Boxes">Rigid Boxes</option>
-								<option value="Cake Boxes">Cake Boxes</option>
-								<option value="Paper Bags">Paper Bags</option>
-								<option value="Stickers">Stickers</option>
-								<option value="Cards">Cards</option>
-								<option value="Invitation">Invitation</option>
-								<option value="Paperboard Boxes">Paperboard Boxes</option>
-								<option value="Others">Others</option>
-								{dynamicCategories.map(c => (<option key={c.id} value={c.name}>{c.name}</option>))}
-							</select>
-				</div>
-						<div>
 							<label className="field-label">Filter by Payment Status:</label>
 							<select 
 								value={paymentFilter} 
@@ -1579,7 +1521,6 @@ function TasksPageInner() {
 								className="btn btn-outline btn-sm"
 							>
 								<option value="none">None</option>
-								<option value="category">Category</option>
 								<option value="customer">Customer</option>
 								<option value="status">Status</option>
 								<option value="assignee">Assignee</option>
@@ -1662,6 +1603,7 @@ function TasksPageInner() {
 												dueAt: editDue ? new Date(editDue).toISOString() : null,
 												customerId: customerId || null,
 												assigneeIds,
+												teamIds,
 												customFields: {
 													...t.customFields,
 													...custom,
@@ -1674,6 +1616,7 @@ function TasksPageInner() {
 										setCustom({});
 										setCustomerId("");
 										setAssigneeIds([]);
+										setTeamIds([]);
 										load();
 									}}
 									className="space-y-4"
@@ -1800,344 +1743,23 @@ function TasksPageInner() {
 										</div>
 									</div>
 
-									<div className="grid grid-cols-2 gap-4">
+									{teams.length > 0 && (
 										<div>
-											<label className="field-label">Type</label>
-											<select className="input" value={custom["category"] ?? ""} onChange={e => setCustom({ ...custom, category: e.target.value })}>
-												<option value="">Select type</option>
-												<option value="Rigid Boxes">Rigid Boxes</option>
-												<option value="Cake Boxes">Cake Boxes</option>
-												<option value="Paper Bags">Paper Bags</option>
-												<option value="Stickers">Stickers</option>
-												<option value="Cards">Cards</option>
-												<option value="Invitation">Invitation</option>
-												<option value="Paperboard Boxes">Paperboard Boxes</option>
-												<option value="Others">Others</option>
-												{dynamicCategories.map(c => (<option key={c.id} value={c.name}>{c.name}</option>))}
-											</select>
-										</div>
-										<div>
-											<label className="field-label">Quantity</label>
-											<input className="input" value={custom["quantity"] ?? ""} onChange={e => setCustom({ ...custom, quantity: e.target.value })} />
-										</div>
-									</div>
-
-									{/* Rigid Box specific fields */}
-									{custom["category"] === "Rigid Boxes" && (
-										<div className="border border-gray-200 rounded p-4 bg-gray-50">
-											<h4 className="font-medium mb-3">Rigid Box Specifications</h4>
-											<div className="grid grid-cols-2 gap-4">
-												<div>
-													<label className="field-label">Box Type</label>
-													<div className="space-y-2">
-														{["Lid & Base", "Magnetic", "Ribbon", "Book", "Custom"].map(type => (
-															<label key={type} className="flex items-center gap-2">
-																<input
-																	type="radio"
-																	name="boxType"
-																	value={type}
-																	checked={custom["boxType"] === type}
-																	onChange={e => setCustom({ ...custom, boxType: e.target.value })}
-																/>
-																{type}
-															</label>
-														))}
-													</div>
-												</div>
-												<div>
-													<label className="field-label">Size</label>
-													<input className="input mb-2" value={custom["size"] ?? ""} onChange={e => setCustom({ ...custom, size: e.target.value })} />
-													<label className="flex items-center gap-2">
+											<label className="field-label">Teams</label>
+											<div className="border border-line-strong rounded-lg p-2.5 max-h-32 overflow-y-auto space-y-1">
+												{teams.map(team => (
+													<label key={team.id} className="flex items-center gap-2 text-sm py-0.5 cursor-pointer">
 														<input
 															type="checkbox"
-															checked={custom["existingSize"] ?? false}
-															onChange={e => setCustom({ ...custom, existingSize: e.target.checked })}
+															checked={teamIds.includes(team.id)}
+															onChange={e => setTeamIds(e.target.checked ? [...teamIds, team.id] : teamIds.filter(id => id !== team.id))}
 														/>
-														Existing size
+														{team.name}
 													</label>
-												</div>
-												<div>
-													<label className="field-label">Top Outer</label>
-													<input className="input" value={custom["topOuter"] ?? ""} onChange={e => setCustom({ ...custom, topOuter: e.target.value })} />
-												</div>
-												<div>
-													<label className="field-label">Top Inner</label>
-													<input className="input" value={custom["topInner"] ?? ""} onChange={e => setCustom({ ...custom, topInner: e.target.value })} />
-												</div>
-												<div>
-													<label className="field-label">Bottom Outer</label>
-													<input className="input" value={custom["bottomOuter"] ?? ""} onChange={e => setCustom({ ...custom, bottomOuter: e.target.value })} />
-												</div>
-												<div>
-													<label className="field-label">Bottom Inner</label>
-													<input className="input" value={custom["bottomInner"] ?? ""} onChange={e => setCustom({ ...custom, bottomInner: e.target.value })} />
-												</div>
-											</div>
-											
-											{/* Partition */}
-											<div className="mt-4">
-												<label className="flex items-center gap-2">
-													<input
-														type="checkbox"
-														checked={custom["hasPartition"] ?? false}
-														onChange={e => setCustom({ ...custom, hasPartition: e.target.checked })}
-													/>
-													Partition
-												</label>
-												{custom["hasPartition"] && (
-													<textarea
-														className="input mt-2"
-														placeholder="Partition description"
-														value={custom["partitionDescription"] ?? ""}
-														onChange={e => setCustom({ ...custom, partitionDescription: e.target.value })}
-													/>
-												)}
+												))}
 											</div>
 										</div>
 									)}
-
-									{custom["category"] === "Cake Boxes" && (
-										<div className="space-y-3 p-3 border border-line rounded-lg bg-wash">
-											<h3 className="font-medium text-sm">Cake Box Specifications</h3>
-											<div>
-												<label className="field-label">Size</label>
-												<div className="flex items-center gap-2">
-													<input
-														type="text"
-														className="input flex-1 w-auto"
-														placeholder="Enter size"
-														value={custom["size"] ?? ""}
-														onChange={e => setCustom({ ...custom, size: e.target.value })}
-													/>
-													<label className="flex items-center gap-2 text-sm">
-														<input
-															type="checkbox"
-															checked={custom["existingSize"] ?? false}
-															onChange={e => setCustom({ ...custom, existingSize: e.target.checked })}
-														/>
-														Existing size
-													</label>
-												</div>
-											</div>
-											<div>
-												<label className="flex items-center gap-2">
-													<input
-														type="checkbox"
-														checked={custom["hasWindow"] ?? false}
-														onChange={e => setCustom({ ...custom, hasWindow: e.target.checked })}
-													/>
-													Window
-												</label>
-												{custom["hasWindow"] && (
-													<input
-														type="text"
-														className="input mt-2"
-														placeholder="Window details"
-														value={custom["windowDetails"] ?? ""}
-														onChange={e => setCustom({ ...custom, windowDetails: e.target.value })}
-													/>
-												)}
-											</div>
-											<div>
-												<label className="flex items-center gap-2">
-													<input
-														type="checkbox"
-														checked={custom["innerPrinting"] ?? false}
-														onChange={e => setCustom({ ...custom, innerPrinting: e.target.checked })}
-													/>
-													Inner Printing
-												</label>
-												{custom["innerPrinting"] && (
-													<input
-														type="text"
-														className="input mt-2"
-														placeholder="Inner printing details"
-														value={custom["innerPrintingDetails"] ?? ""}
-														onChange={e => setCustom({ ...custom, innerPrintingDetails: e.target.value })}
-													/>
-												)}
-											</div>
-										</div>
-									)}
-
-									{custom["category"] === "Paper Bags" && (
-										<div className="space-y-3 p-3 border border-line rounded-lg bg-wash">
-											<h3 className="font-medium text-sm">Paper Bag Specifications</h3>
-											<div>
-												<label className="field-label">Size</label>
-												<div className="flex items-center gap-2">
-													<input
-														type="text"
-														className="input flex-1 w-auto"
-														placeholder="Enter size"
-														value={custom["size"] ?? ""}
-														onChange={e => setCustom({ ...custom, size: e.target.value })}
-													/>
-													<label className="flex items-center gap-2 text-sm">
-														<input
-															type="checkbox"
-															checked={custom["existingSize"] ?? false}
-															onChange={e => setCustom({ ...custom, existingSize: e.target.checked })}
-														/>
-														Existing size
-													</label>
-												</div>
-											</div>
-											<div>
-												<label className="flex items-center gap-2">
-													<input
-														type="checkbox"
-														checked={custom["innerPrinting"] ?? false}
-														onChange={e => setCustom({ ...custom, innerPrinting: e.target.checked })}
-													/>
-													Inner Printing
-												</label>
-												{custom["innerPrinting"] && (
-													<input
-														type="text"
-														className="input mt-2"
-														placeholder="Inner printing details"
-														value={custom["innerPrintingDetails"] ?? ""}
-														onChange={e => setCustom({ ...custom, innerPrintingDetails: e.target.value })}
-													/>
-												)}
-											</div>
-											<input
-												type="text"
-												className="input"
-												placeholder="Rope details"
-												value={custom["rope"] ?? ""}
-												onChange={e => setCustom({ ...custom, rope: e.target.value })}
-											/>
-										</div>
-									)}
-
-									{custom["category"] === "Stickers" && (
-										<div className="space-y-3 p-3 border border-line rounded-lg bg-wash">
-											<h3 className="font-medium text-sm">Sticker Specifications</h3>
-											<input
-												type="text"
-												className="input"
-												placeholder="Size"
-												value={custom["size"] ?? ""}
-												onChange={e => setCustom({ ...custom, size: e.target.value })}
-											/>
-											<div className="grid grid-cols-2 gap-3">
-												<div>
-													<label className="field-label">Shape</label>
-													<select
-														className="input"
-														value={custom["shape"] ?? "Rectangle"}
-														onChange={e => setCustom({ ...custom, shape: e.target.value })}
-													>
-														<option>Rectangle</option>
-														<option>Circle</option>
-														<option>Custom</option>
-													</select>
-												</div>
-												<div>
-													<label className="field-label">Material</label>
-													<select
-														className="input"
-														value={custom["material"] ?? "Artsticker"}
-														onChange={e => setCustom({ ...custom, material: e.target.value })}
-													>
-														<option>Artsticker</option>
-														<option>Transparent</option>
-														<option>Chrome</option>
-														<option>Synthetic</option>
-													</select>
-												</div>
-											</div>
-										</div>
-									)}
-
-									{custom["category"] === "Cards" && (
-										<div className="space-y-3 p-3 border border-line rounded-lg bg-wash">
-											<h3 className="font-medium text-sm">Card Specifications</h3>
-											<input
-												type="text"
-												className="input"
-												placeholder="Size"
-												value={custom["size"] ?? ""}
-												onChange={e => setCustom({ ...custom, size: e.target.value })}
-											/>
-											<div>
-												<label className="field-label">Sides</label>
-												<div className="flex items-center gap-4">
-													<label className="flex items-center gap-2 text-sm">
-														<input
-															type="radio"
-															name="cardSides"
-															value="single"
-															checked={(custom["sides"] ?? "single") === "single"}
-															onChange={() => setCustom({ ...custom, sides: "single" })}
-														/>
-														Single side
-													</label>
-													<label className="flex items-center gap-2 text-sm">
-														<input
-															type="radio"
-															name="cardSides"
-															value="double"
-															checked={custom["sides"] === "double"}
-															onChange={() => setCustom({ ...custom, sides: "double" })}
-														/>
-														Double side
-													</label>
-												</div>
-											</div>
-											<input
-												type="text"
-												className="input"
-												placeholder="Material"
-												value={custom["material"] ?? ""}
-												onChange={e => setCustom({ ...custom, material: e.target.value })}
-											/>
-										</div>
-									)}
-
-									{custom["category"] === "Invitation" && (
-										<div className="border border-gray-200 rounded p-4 bg-gray-50">
-											<h4 className="font-medium mb-3">Invitation Specifications</h4>
-											<div className="grid grid-cols-2 gap-4">
-												<div>
-													<label className="field-label">Size</label>
-													<input className="input mb-2" value={custom["size"] ?? ""} onChange={e => setCustom({ ...custom, size: e.target.value })} />
-													<label className="flex items-center gap-2">
-														<input type="checkbox" checked={custom["existingSize"] ?? false} onChange={e => setCustom({ ...custom, existingSize: e.target.checked })} />
-														Existing size
-													</label>
-												</div>
-												<div>
-													<label className="field-label">Material</label>
-													<input className="input" value={custom["material"] ?? ""} onChange={e => setCustom({ ...custom, material: e.target.value })} />
-												</div>
-												<div>
-													<label className="field-label">Envelope</label>
-													<input className="input" value={custom["envelope"] ?? ""} onChange={e => setCustom({ ...custom, envelope: e.target.value })} />
-												</div>
-											</div>
-										</div>
-									)}
-
-									{dynamicCategories.find(c => c.name === custom["category"])?.fields.map(f => (
-										<div key={f.id} className="text-sm">
-											<label className="block mb-1">{f.label}{f.required && " *"}</label>
-											{f.type === "TEXT" && (
-												<input className="input" value={custom[f.key] ?? ""} onChange={e => setCustom({ ...custom, [f.key]: e.target.value })} />
-											)}
-											{f.type === "NUMBER" && (
-												<input type="number" className="input" value={custom[f.key] ?? ""} onChange={e => setCustom({ ...custom, [f.key]: e.target.valueAsNumber })} />
-											)}
-											{f.type === "DATE" && (
-												<input type="date" className="input" value={custom[f.key] ?? ""} onChange={e => setCustom({ ...custom, [f.key]: e.target.value })} />
-											)}
-											{f.type === "BOOLEAN" && (
-												<label className="flex items-center gap-2"><input type="checkbox" checked={!!custom[f.key]} onChange={e => setCustom({ ...custom, [f.key]: e.target.checked })} /> {f.label}</label>
-											)}
-										</div>
-									))}
 
 									<DateTimeSelector label="Start" value={editStart} onChange={setEditStart} />
 									<DateTimeSelector label="Due" value={editDue} onChange={setEditDue} />
@@ -2212,6 +1834,7 @@ function TasksPageInner() {
 											setCustom({});
 											setCustomerId("");
 											setAssigneeIds([]);
+											setTeamIds([]);
 											setShowNewCustomerForm(false);
 											setNewCustomerName("");
 											setNewCustomerEmail("");
@@ -2275,17 +1898,14 @@ function TasksPageInner() {
 							</div>
 							{/* Badges row below title */}
 							<div className="mt-1 flex flex-wrap items-center gap-1">
-								{t.customFields?.quantity && (
-									<span className="chip chip-info chip-plain">Qty: {t.customFields.quantity}</span>
-								)}
 								{t.customerRef?.name && (
 									<span className="chip chip-plain">{t.customerRef.name}</span>
 								)}
-								{t.customFields?.category && (
-									<span className="chip chip-plain">{t.customFields.category}</span>
-								)}
 								{t.assignments && t.assignments.map(a => (
 									<span key={a.id} className="chip chip-plain">{a.user.name}</span>
+								))}
+								{t.teamAssignments && t.teamAssignments.map(ta => (
+									<span key={ta.id} className="chip chip-info">{ta.team.name}</span>
 								))}
 								{t.createdBy && (
 									<span className="meta">Created by {t.createdBy.name}</span>
@@ -2308,6 +1928,7 @@ function TasksPageInner() {
 												setEditDue(t.dueAt ? new Date(t.dueAt).toISOString().slice(0,16) : "");
 												setCustomerId(t.customerId || "");
 												setAssigneeIds(t.assignments?.map(a => a.user.id) || []);
+												setTeamIds(t.teamAssignments?.map(ta => ta.team.id) || []);
 												setCustom(t.customFields || {});
 												setEditFiles([]);
 											}}
@@ -2349,7 +1970,7 @@ function TasksPageInner() {
 
 									{expandedComments.has(t.id) && (
 										<div className="mt-3">
-											<TaskComments taskId={t.id} mentionable={users.map(u => ({ id: u.id, name: u.name }))} />
+											<TaskComments taskId={t.id} mentionable={[...users.map(u => ({ id: u.id, name: u.name })), ...teams.map(team => ({ id: team.id, name: team.name }))]} />
 										</div>
 									)}
 
@@ -2588,11 +2209,11 @@ function TasksPageInner() {
 										)}
 									</div>
 
-									{/* Despatch List Section */}
+									{/* Items Section */}
 									<div className="mt-4 border-t border-gray-200 pt-4">
 										<div className="flex flex-wrap items-center justify-between gap-2 mb-3">
 											<h4 className="text-sm font-medium">
-												Despatch list
+												Items
 												{t.despatchItems && t.despatchItems.length > 0 && (
 													<span className="text-xs text-muted ml-2">
 														{t.despatchItems.filter(i => i.status === "DELIVERED").length}/{t.despatchItems.length} delivered
@@ -2611,11 +2232,19 @@ function TasksPageInner() {
 										{addingDespatchItemToTaskId === t.id && (
 											<form
 												onSubmit={(e) => { e.preventDefault(); createDespatchItem(t.id); }}
-												className="flex flex-wrap gap-2 p-3 border border-line rounded-lg bg-wash mb-3"
+												className="space-y-2 p-3 border border-line rounded-lg bg-wash mb-3"
 											>
-												<input className="input flex-[3] min-w-[8rem] text-sm" placeholder="Item name" value={newDespatchName} onChange={(e) => setNewDespatchName(e.target.value)} required />
-												<input className="input flex-1 min-w-[5rem] text-sm" type="number" min="0" step="any" placeholder="Qty" value={newDespatchQuantity} onChange={(e) => setNewDespatchQuantity(e.target.value)} required />
-												<input className="input flex-1 min-w-[5rem] text-sm" placeholder="Unit" value={newDespatchUnit} onChange={(e) => setNewDespatchUnit(e.target.value)} />
+												<div className="flex flex-wrap gap-2">
+													<input className="input flex-[3] min-w-[8rem] text-sm" placeholder="Item name" value={newDespatchName} onChange={(e) => setNewDespatchName(e.target.value)} required />
+													<input className="input flex-1 min-w-[5rem] text-sm" type="number" min="0" step="any" placeholder="Qty" value={newDespatchQuantity} onChange={(e) => setNewDespatchQuantity(e.target.value)} required />
+													<input className="input flex-1 min-w-[5rem] text-sm" placeholder="Unit" value={newDespatchUnit} onChange={(e) => setNewDespatchUnit(e.target.value)} />
+												</div>
+												<ItemSpecFields
+													category={newDespatchCategory}
+													specFields={newDespatchSpecFields}
+													onCategoryChange={setNewDespatchCategory}
+													onFieldChange={(key, value) => setNewDespatchSpecFields(v => ({ ...v, [key]: value }))}
+												/>
 												<button type="submit" className="btn btn-accent btn-sm">Add</button>
 											</form>
 										)}
@@ -2623,36 +2252,85 @@ function TasksPageInner() {
 										{t.despatchItems && t.despatchItems.length > 0 ? (
 											<div className="space-y-2">
 												{t.despatchItems.map((item) => (
-													<div key={item.id} className="flex flex-wrap items-center justify-between gap-2 p-2.5 border border-gray-200 rounded bg-white">
-														<span className="text-sm">{item.name} — {item.quantity} {item.unit}</span>
-														<div className="flex items-center gap-2">
-															<select
-																className={`input text-xs py-1 !w-auto chip ${
-																	item.status === "DELIVERED" ? "chip-ok" :
-																	item.status === "DISPATCHED" ? "chip-info" :
-																	item.status === "PACKED" ? "chip-warn" : "chip-plain"
-																}`}
-																value={item.status}
-																onChange={(e) => updateDespatchItemStatus(item.id, e.target.value as DespatchItem["status"])}
+													<div key={item.id} className="p-2.5 border border-gray-200 rounded bg-white">
+														{editingDespatchItemId === item.id ? (
+															<form
+																onSubmit={(e) => { e.preventDefault(); saveDespatchItemEdit(item.id); }}
+																className="space-y-2"
 															>
-																<option value="PENDING">Pending</option>
-																<option value="PACKED">Packed</option>
-																<option value="DISPATCHED">Dispatched</option>
-																<option value="DELIVERED">Delivered</option>
-															</select>
-															<button
-																type="button"
-																onClick={() => deleteDespatchItem(item.id)}
-																className="text-xs px-2 py-1 rounded border text-red-600 hover:text-red-800 hover:bg-red-50"
-															>
-																Delete
-															</button>
-														</div>
+																<div className="flex flex-wrap gap-2">
+																	<input className="input flex-[3] min-w-[8rem] text-sm" placeholder="Item name" value={editDespatchName} onChange={(e) => setEditDespatchName(e.target.value)} required />
+																	<input className="input flex-1 min-w-[5rem] text-sm" type="number" min="0" step="any" placeholder="Qty" value={editDespatchQuantity} onChange={(e) => setEditDespatchQuantity(e.target.value)} required />
+																	<input className="input flex-1 min-w-[5rem] text-sm" placeholder="Unit" value={editDespatchUnit} onChange={(e) => setEditDespatchUnit(e.target.value)} />
+																</div>
+																<ItemSpecFields
+																	category={editDespatchCategory}
+																	specFields={editDespatchSpecFields}
+																	onCategoryChange={setEditDespatchCategory}
+																	onFieldChange={(key, value) => setEditDespatchSpecFields(v => ({ ...v, [key]: value }))}
+																/>
+																<div className="flex gap-2">
+																	<button type="submit" className="btn btn-accent btn-sm">Save</button>
+																	<button type="button" className="btn btn-outline btn-sm" onClick={cancelEditDespatchItem}>Cancel</button>
+																</div>
+															</form>
+														) : (
+															<div className="flex flex-wrap items-center justify-between gap-2">
+																<div>
+																	<span className="text-sm">{item.name} — {item.quantity} {item.unit}</span>
+																	{item.specFields?.category && (
+																		<span className="chip chip-plain ml-2">{item.specFields.category}</span>
+																	)}
+																	{item.specFields && Object.keys(item.specFields).filter(k => k !== "category").length > 0 && (
+																		<details className="mt-1">
+																			<summary className="text-xs text-muted cursor-pointer">Specs</summary>
+																			<div className="text-xs text-muted mt-1 space-y-0.5">
+																				{Object.entries(item.specFields).filter(([k]) => k !== "category").map(([k, v]) => (
+																					v === "" || v === false || v === null || v === undefined ? null : (
+																						<div key={k}>{k}: {String(v)}</div>
+																					)
+																				))}
+																			</div>
+																		</details>
+																	)}
+																</div>
+																<div className="flex items-center gap-2">
+																	<select
+																		className={`input text-xs py-1 !w-auto chip ${
+																			item.status === "DELIVERED" ? "chip-ok" :
+																			item.status === "DISPATCHED" ? "chip-info" :
+																			item.status === "PACKED" ? "chip-warn" : "chip-plain"
+																		}`}
+																		value={item.status}
+																		onChange={(e) => updateDespatchItemStatus(item.id, e.target.value as DespatchItem["status"])}
+																	>
+																		<option value="PENDING">Pending</option>
+																		<option value="PACKED">Packed</option>
+																		<option value="DISPATCHED">Dispatched</option>
+																		<option value="DELIVERED">Delivered</option>
+																	</select>
+																	<button
+																		type="button"
+																		onClick={() => startEditDespatchItem(item)}
+																		className="btn btn-outline btn-sm"
+																	>
+																		Edit
+																	</button>
+																	<button
+																		type="button"
+																		onClick={() => deleteDespatchItem(item.id)}
+																		className="text-xs px-2 py-1 rounded border text-red-600 hover:text-red-800 hover:bg-red-50"
+																	>
+																		Delete
+																	</button>
+																</div>
+															</div>
+														)}
 													</div>
 												))}
 											</div>
 										) : (
-											<p className="text-xs text-gray-500 italic">No despatch items yet</p>
+											<p className="text-xs text-gray-500 italic">No items yet</p>
 										)}
 									</div>
 
@@ -2698,6 +2376,11 @@ function TasksPageInner() {
 														<button type="button" className="btn btn-outline btn-sm" onClick={() => openOnboardingFillModal(t.id)}>
 															Fill in manually
 														</button>
+														{form?.status === "SUBMITTED" && (
+															<button type="button" className="btn btn-outline btn-sm" onClick={() => setViewingOnboardingTaskId(t.id)}>
+																View details
+															</button>
+														)}
 													</div>
 												</div>
 											);
@@ -2726,18 +2409,24 @@ function TasksPageInner() {
 						>
 							<div className="space-y-2">
 								<h3 className="text-sm font-medium">Billing details</h3>
-								<input className="input text-sm" placeholder="Billing name *" required value={onboardingFillValues.billingName} onChange={(e) => setOnboardingFillValues(v => ({ ...v, billingName: e.target.value }))} />
-								<input className="input text-sm" type="email" placeholder="Email" value={onboardingFillValues.billingEmail} onChange={(e) => setOnboardingFillValues(v => ({ ...v, billingEmail: e.target.value }))} />
-								<input className="input text-sm" placeholder="Phone" value={onboardingFillValues.billingPhone} onChange={(e) => setOnboardingFillValues(v => ({ ...v, billingPhone: e.target.value }))} />
-								<textarea className="input text-sm" rows={2} placeholder="Billing address *" required value={onboardingFillValues.billingAddress} onChange={(e) => setOnboardingFillValues(v => ({ ...v, billingAddress: e.target.value }))} />
-								<input className="input text-sm" placeholder="GSTIN / Tax ID" value={onboardingFillValues.gstin} onChange={(e) => setOnboardingFillValues(v => ({ ...v, gstin: e.target.value }))} />
+								<input className="input text-sm" placeholder="Billing name *" required value={onboardingFillValues.billingName} onChange={(e) => updateOnboardingFillValue("billingName", e.target.value)} />
+								<input className="input text-sm" type="email" placeholder="Email" value={onboardingFillValues.billingEmail} onChange={(e) => updateOnboardingFillValue("billingEmail", e.target.value)} />
+								<input className="input text-sm" placeholder="Phone *" required value={onboardingFillValues.billingPhone} onChange={(e) => updateOnboardingFillValue("billingPhone", e.target.value)} />
+								<textarea className="input text-sm" rows={2} placeholder="Billing address *" required value={onboardingFillValues.billingAddress} onChange={(e) => updateOnboardingFillValue("billingAddress", e.target.value)} />
+								<input className="input text-sm" placeholder="GSTIN / Tax ID" value={onboardingFillValues.gstin} onChange={(e) => updateOnboardingFillValue("gstin", e.target.value)} />
 							</div>
 							<div className="space-y-2">
-								<h3 className="text-sm font-medium">Delivery details</h3>
-								<input className="input text-sm" placeholder="Contact name" value={onboardingFillValues.deliveryContactName} onChange={(e) => setOnboardingFillValues(v => ({ ...v, deliveryContactName: e.target.value }))} />
-								<input className="input text-sm" placeholder="Delivery phone" value={onboardingFillValues.deliveryPhone} onChange={(e) => setOnboardingFillValues(v => ({ ...v, deliveryPhone: e.target.value }))} />
-								<textarea className="input text-sm" rows={2} placeholder="Delivery address *" required value={onboardingFillValues.deliveryAddress} onChange={(e) => setOnboardingFillValues(v => ({ ...v, deliveryAddress: e.target.value }))} />
-								<textarea className="input text-sm" rows={2} placeholder="Delivery notes" value={onboardingFillValues.deliveryNotes} onChange={(e) => setOnboardingFillValues(v => ({ ...v, deliveryNotes: e.target.value }))} />
+								<div className="flex items-center justify-between">
+									<h3 className="text-sm font-medium">Delivery details</h3>
+									<label className="flex items-center gap-2 text-xs text-muted">
+										<input type="checkbox" checked={fillSameAsBilling} onChange={(e) => toggleFillSameAsBilling(e.target.checked)} />
+										Same as billing
+									</label>
+								</div>
+								<input className="input text-sm" placeholder="Contact name" disabled={fillSameAsBilling} value={onboardingFillValues.deliveryContactName} onChange={(e) => updateOnboardingFillValue("deliveryContactName", e.target.value)} />
+								<input className="input text-sm" placeholder="Delivery phone" disabled={fillSameAsBilling} value={onboardingFillValues.deliveryPhone} onChange={(e) => updateOnboardingFillValue("deliveryPhone", e.target.value)} />
+								<textarea className="input text-sm" rows={2} placeholder="Delivery address *" required disabled={fillSameAsBilling} value={onboardingFillValues.deliveryAddress} onChange={(e) => updateOnboardingFillValue("deliveryAddress", e.target.value)} />
+								<textarea className="input text-sm" rows={2} placeholder="Delivery notes" value={onboardingFillValues.deliveryNotes} onChange={(e) => updateOnboardingFillValue("deliveryNotes", e.target.value)} />
 							</div>
 							{error && <p className="text-sm text-danger">{error}</p>}
 							<div className="flex gap-2">
@@ -2748,6 +2437,46 @@ function TasksPageInner() {
 					</div>
 				</div>
 			)}
+
+			{/* Onboarding Form — View Submitted Details Modal */}
+			{viewingOnboardingTaskId && (() => {
+				const form = onboardingForms[viewingOnboardingTaskId];
+				if (!form) return null;
+				const row = (label: string, value?: string | null) => (
+					<div>
+						<label className="field-label">{label}</label>
+						<p className="text-sm">{value || <span className="text-muted italic">Not provided</span>}</p>
+					</div>
+				);
+				return (
+					<div className="fixed inset-0 bg-black/55 backdrop-blur-[2px] flex items-center justify-center z-50 p-3">
+						<div className="card card-pad max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto !bg-[var(--raised)] shadow-lg">
+							<div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+								<h2 className="text-lg font-semibold">Onboarding details</h2>
+								<button type="button" className="text-gray-500 hover:text-gray-700" onClick={() => setViewingOnboardingTaskId(null)}>✕</button>
+							</div>
+							<div className="space-y-4">
+								<div className="space-y-2">
+									<h3 className="text-sm font-medium">Billing details</h3>
+									{row("Billing name", form.billingName)}
+									{row("Email", form.billingEmail)}
+									{row("Phone", form.billingPhone)}
+									{row("Billing address", form.billingAddress)}
+									{row("GSTIN / Tax ID", form.gstin)}
+								</div>
+								<div className="space-y-2">
+									<h3 className="text-sm font-medium">Delivery details</h3>
+									{row("Contact name", form.deliveryContactName)}
+									{row("Delivery phone", form.deliveryPhone)}
+									{row("Delivery address", form.deliveryAddress)}
+									{row("Delivery notes", form.deliveryNotes)}
+								</div>
+								<button type="button" className="btn btn-outline btn-sm" onClick={() => setViewingOnboardingTaskId(null)}>Close</button>
+							</div>
+						</div>
+					</div>
+				);
+			})()}
 
 			{/* View Task Modal */}
 			{viewingId && (() => {
@@ -2842,224 +2571,6 @@ function TasksPageInner() {
 									</div>
 								)}
 
-								{/* Custom Fields */}
-								{task.customFields && Object.keys(task.customFields).length > 0 && (
-									<div>
-										<h3 className="font-medium text-gray-900 mb-2">Custom Fields</h3>
-										<div className="space-y-3">
-											{task.customFields.quantity && (
-												<div>
-													<label className="field-label">Quantity</label>
-													<p className="text-sm text-gray-900">{task.customFields.quantity}</p>
-												</div>
-											)}
-											{task.customFields.category && (
-												<div>
-													<label className="field-label">Category</label>
-													<p className="text-sm text-gray-900">{task.customFields.category}</p>
-												</div>
-											)}
-											
-											{/* Rigid Box specific fields */}
-											{task.customFields.category === "Rigid Boxes" && (
-												<div className="border border-line rounded-lg p-3 bg-wash">
-													<h4 className="font-medium text-sm mb-2">Rigid Box Specifications</h4>
-													<div className="grid grid-cols-2 gap-3 text-sm">
-														{task.customFields.boxType && (
-															<div>
-																<label className="field-label">Box Type</label>
-																<p className="text-gray-900">{task.customFields.boxType}</p>
-															</div>
-														)}
-														{task.customFields.size && (
-															<div>
-																<label className="field-label">Size</label>
-																<p className="text-gray-900">
-																	{task.customFields.size}
-																	{task.customFields.existingSize && " (Existing size)"}
-																</p>
-															</div>
-														)}
-														{task.customFields.topOuter && (
-															<div>
-																<label className="field-label">Top Outer</label>
-																<p className="text-gray-900">{task.customFields.topOuter}</p>
-															</div>
-														)}
-														{task.customFields.topInner && (
-															<div>
-																<label className="field-label">Top Inner</label>
-																<p className="text-gray-900">{task.customFields.topInner}</p>
-															</div>
-														)}
-														{task.customFields.bottomOuter && (
-															<div>
-																<label className="field-label">Bottom Outer</label>
-																<p className="text-gray-900">{task.customFields.bottomOuter}</p>
-															</div>
-														)}
-														{task.customFields.bottomInner && (
-															<div>
-																<label className="field-label">Bottom Inner</label>
-																<p className="text-gray-900">{task.customFields.bottomInner}</p>
-															</div>
-														)}
-														{task.customFields.hasPartition && (
-															<div className="col-span-2">
-																<label className="field-label">Partition</label>
-																<p className="text-gray-900">
-																	Yes
-																	{task.customFields.partitionDescription && ` - ${task.customFields.partitionDescription}`}
-																</p>
-															</div>
-														)}
-													</div>
-												</div>
-											)}
-
-											{/* Cake Boxes specific fields */}
-											{task.customFields.category === "Cake Boxes" && (
-												<div className="border border-line rounded-lg p-3 bg-wash">
-													<h4 className="font-medium text-sm mb-2">Cake Box Specifications</h4>
-													<div className="grid grid-cols-2 gap-3 text-sm">
-														{task.customFields.size && (
-															<div>
-																<label className="field-label">Size</label>
-																<p className="text-gray-900">
-																	{task.customFields.size}
-																	{task.customFields.existingSize && " (Existing size)"}
-																</p>
-															</div>
-														)}
-														{task.customFields.hasWindow && (
-															<div>
-																<label className="field-label">Window</label>
-																<p className="text-gray-900">Yes{task.customFields.windowDetails ? ` - ${task.customFields.windowDetails}` : ""}</p>
-															</div>
-														)}
-														{task.customFields.innerPrinting && (
-															<div>
-																<label className="field-label">Inner Printing</label>
-																<p className="text-gray-900">Yes{task.customFields.innerPrintingDetails ? ` - ${task.customFields.innerPrintingDetails}` : ""}</p>
-															</div>
-														)}
-													</div>
-												</div>
-											)}
-
-											{/* Paper Bags specific fields */}
-											{task.customFields.category === "Paper Bags" && (
-												<div className="border border-line rounded-lg p-3 bg-wash">
-													<h4 className="font-medium text-sm mb-2">Paper Bag Specifications</h4>
-													<div className="grid grid-cols-2 gap-3 text-sm">
-														{task.customFields.size && (
-															<div>
-																<label className="field-label">Size</label>
-																<p className="text-gray-900">
-																	{task.customFields.size}
-																	{task.customFields.existingSize && " (Existing size)"}
-																</p>
-															</div>
-														)}
-														{task.customFields.innerPrinting && (
-															<div>
-																<label className="field-label">Inner Printing</label>
-																<p className="text-gray-900">Yes{task.customFields.innerPrintingDetails ? ` - ${task.customFields.innerPrintingDetails}` : ""}</p>
-															</div>
-														)}
-														{task.customFields.rope && (
-															<div>
-																<label className="field-label">Rope</label>
-																<p className="text-gray-900">{task.customFields.rope}</p>
-															</div>
-														)}
-													</div>
-												</div>
-											)}
-
-											{/* Stickers specific fields */}
-											{task.customFields.category === "Stickers" && (
-												<div className="border border-line rounded-lg p-3 bg-wash">
-													<h4 className="font-medium text-sm mb-2">Sticker Specifications</h4>
-													<div className="grid grid-cols-2 gap-3 text-sm">
-														{task.customFields.size && (
-															<div>
-																<label className="field-label">Size</label>
-																<p className="text-gray-900">{task.customFields.size}</p>
-															</div>
-														)}
-														{task.customFields.shape && (
-															<div>
-																<label className="field-label">Shape</label>
-																<p className="text-gray-900">{task.customFields.shape}</p>
-															</div>
-														)}
-														{task.customFields.material && (
-															<div>
-																<label className="field-label">Material</label>
-																<p className="text-gray-900">{task.customFields.material}</p>
-															</div>
-														)}
-													</div>
-												</div>
-											)}
-
-											{/* Cards specific fields */}
-											{task.customFields.category === "Cards" && (
-												<div className="border border-line rounded-lg p-3 bg-wash">
-													<h4 className="font-medium text-sm mb-2">Card Specifications</h4>
-													<div className="grid grid-cols-2 gap-3 text-sm">
-														{task.customFields.size && (
-															<div>
-																<label className="field-label">Size</label>
-																<p className="text-gray-900">{task.customFields.size}</p>
-															</div>
-														)}
-														{task.customFields.sides && (
-															<div>
-																<label className="field-label">Sides</label>
-																<p className="text-gray-900">{task.customFields.sides === "double" ? "Double side" : "Single side"}</p>
-															</div>
-														)}
-														{task.customFields.material && (
-															<div>
-																<label className="field-label">Material</label>
-																<p className="text-gray-900">{task.customFields.material}</p>
-															</div>
-														)}
-													</div>
-												</div>
-											)}
-
-											{task.customFields.category === "Invitation" && (
-												<div className="border border-line rounded-lg p-3 bg-wash">
-													<h4 className="font-medium text-sm mb-2">Invitation Specifications</h4>
-													<div className="grid grid-cols-2 gap-3 text-sm">
-														{task.customFields.size && (
-															<div>
-																<label className="field-label">Size</label>
-																<p className="text-gray-900">{task.customFields.size}{task.customFields.existingSize && " (Existing size)"}</p>
-															</div>
-														)}
-														{task.customFields.material && (
-															<div>
-																<label className="field-label">Material</label>
-																<p className="text-gray-900">{task.customFields.material}</p>
-															</div>
-														)}
-														{task.customFields.envelope && (
-															<div>
-																<label className="field-label">Envelope</label>
-																<p className="text-gray-900">{task.customFields.envelope}</p>
-															</div>
-														)}
-													</div>
-												</div>
-											)}
-										</div>
-									</div>
-								)}
-
 								{/* Attachments */}
 								{task.customFields?.attachments && task.customFields.attachments.length > 0 && (
 									<div>
@@ -3081,7 +2592,7 @@ function TasksPageInner() {
 									</div>
 								)}
 
-								<TaskComments taskId={task.id} mentionable={users.map(u => ({ id: u.id, name: u.name }))} />
+								<TaskComments taskId={task.id} mentionable={[...users.map(u => ({ id: u.id, name: u.name })), ...teams.map(team => ({ id: team.id, name: team.name }))]} />
 							</div>
 						</div>
 					</div>
