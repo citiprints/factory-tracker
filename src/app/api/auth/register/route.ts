@@ -12,11 +12,18 @@ const RegisterSchema = z.object({
 export async function POST(request: Request) {
   try {
     const json = await request.json();
-    const { email, password, name } = RegisterSchema.parse(json);
+    const { email: rawEmail, password, name } = RegisterSchema.parse(json);
+    // Case-insensitive everywhere: "Name@x.com" and "name@x.com" must never
+    // become two accounts, or sign-in silently fails depending on which
+    // casing someone happens to type.
+    const email = rawEmail.trim().toLowerCase();
 
-    const existing = await prisma.user.findUnique({ where: { email } });
+    const existing = await prisma.user.findFirst({ where: { email: { equals: email, mode: "insensitive" } } });
     if (existing) {
-      return NextResponse.json({ error: "Email already in use" }, { status: 409 });
+      const message = existing.active
+        ? "Email already in use"
+        : "An account with this email already exists but has been deactivated. Ask an admin to reactivate it instead of signing up again.";
+      return NextResponse.json({ error: message }, { status: 409 });
     }
 
     const passwordHash = await bcrypt.hash(password, 12);

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/session";
+import bcrypt from "bcryptjs";
 import { z } from "zod";
 
 const UpdateUserSchema = z.object({
@@ -8,25 +9,27 @@ const UpdateUserSchema = z.object({
 	email: z.string().email().optional(),
 	role: z.enum(["WORKER", "MANAGER", "ADMIN"]).optional(),
 	active: z.boolean().optional(),
+	password: z.string().min(8).optional(),
 });
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
 	const user = await getCurrentUser();
 	if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-	
+
 	// Only admins can update users
 	if (user.role !== "ADMIN") {
 		return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 	}
-	
+
 	try {
 		const json = await request.json();
-		const data = UpdateUserSchema.parse(json);
+		const { password, ...data } = UpdateUserSchema.parse(json);
+		if (data.email) data.email = data.email.trim().toLowerCase();
 		const { id } = await params;
-		
+
 		const updatedUser = await prisma.user.update({
 			where: { id },
-			data,
+			data: password ? { ...data, password: await bcrypt.hash(password, 12) } : data,
 			select: {
 				id: true,
 				name: true,
@@ -36,7 +39,14 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 				createdAt: true
 			}
 		});
-		
+
+		// A reset password should force a fresh sign-in everywhere, same as
+		// deactivating does -- otherwise an already-open session on another
+		// device keeps working with the password nobody else knows anymore.
+		if (password) {
+			await prisma.session.deleteMany({ where: { userId: id } });
+		}
+
 		return NextResponse.json({ user: updatedUser });
 	} catch (error) {
 		if (error instanceof z.ZodError) {

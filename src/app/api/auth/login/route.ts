@@ -14,11 +14,27 @@ export async function POST(request: Request) {
 		const json = await request.json();
 		const { email, password } = LoginSchema.parse(json);
 
-		const user = await prisma.user.findUnique({ where: { email } });
+		// Case-insensitive: whatever casing someone types must resolve to the
+		// same account they signed up with. Prefers an active match if a
+		// legacy duplicate ever exists under two different casings.
+		const user = await prisma.user.findFirst({
+			where: { email: { equals: email.trim(), mode: "insensitive" } },
+			orderBy: { active: "desc" },
+		});
 		if (!user) return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
 
 		const ok = await bcrypt.compare(password, user.password);
 		if (!ok) return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
+
+		// Checked after the password so a wrong-password guess on a deactivated
+		// account still just says "Invalid credentials" -- only someone who
+		// actually knows the password learns the account is disabled.
+		if (!user.active) {
+			return NextResponse.json(
+				{ error: "This account has been deactivated. Ask an admin to reactivate it." },
+				{ status: 403 }
+			);
+		}
 
 		const session = await prisma.session.create({
 			data: {

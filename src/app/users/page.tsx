@@ -33,9 +33,18 @@ export default function UsersPage() {
 	const [editEmail, setEditEmail] = useState("");
 	const [editRole, setEditRole] = useState("");
 	const [editActive, setEditActive] = useState(true);
+	const [editPassword, setEditPassword] = useState("");
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const router = useRouter();
+
+	// New-member mini-form
+	const [addingMember, setAddingMember] = useState(false);
+	const [newName, setNewName] = useState("");
+	const [newEmail, setNewEmail] = useState("");
+	const [newPassword, setNewPassword] = useState("");
+	const [newRole, setNewRole] = useState("WORKER");
+	const [creating, setCreating] = useState(false);
 
 	useEffect(() => {
 		if (currentUser && !isAdmin) {
@@ -44,7 +53,7 @@ export default function UsersPage() {
 	}, [currentUser, isAdmin, router]);
 
 	async function load() {
-		const res = await fetch("/api/users");
+		const res = await fetch("/api/users?includeInactive=true");
 		if (res.ok) {
 			const json = await res.json();
 			setUsers(json.users ?? []);
@@ -61,7 +70,13 @@ export default function UsersPage() {
 		const res = await fetch(`/api/users/${userId}`, {
 			method: "PATCH",
 			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({ name: editName, email: editEmail, role: editRole, active: editActive }),
+			body: JSON.stringify({
+				name: editName,
+				email: editEmail,
+				role: editRole,
+				active: editActive,
+				...(editPassword ? { password: editPassword } : {}),
+			}),
 		});
 		setLoading(false);
 		if (!res.ok) {
@@ -70,20 +85,62 @@ export default function UsersPage() {
 			return;
 		}
 		setEditingId(null);
+		setEditPassword("");
 		load();
 	}
 
-	async function onDelete(userId: string) {
-		if (!confirm("Delete this user? Their tasks and attendance history stay, but they won't be able to sign in.")) return;
+	async function onDeactivate(userId: string) {
+		if (!confirm("Deactivate this user? Their tasks and attendance history stay, but they won't be able to sign in until an admin reactivates them.")) return;
 		setLoading(true);
 		setError(null);
 		const res = await fetch(`/api/users/${userId}`, { method: "DELETE" });
 		setLoading(false);
 		if (!res.ok) {
 			const json = await res.json().catch(() => ({}));
-			setError(json.error ?? "Couldn't delete the user.");
+			setError(json.error ?? "Couldn't deactivate the user.");
 			return;
 		}
+		load();
+	}
+
+	async function onReactivate(userId: string) {
+		setLoading(true);
+		setError(null);
+		const res = await fetch(`/api/users/${userId}`, {
+			method: "PATCH",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ active: true }),
+		});
+		setLoading(false);
+		if (!res.ok) {
+			const json = await res.json().catch(() => ({}));
+			setError(json.error ?? "Couldn't reactivate the user.");
+			return;
+		}
+		load();
+	}
+
+	async function onCreate(e: React.FormEvent) {
+		e.preventDefault();
+		if (!newName.trim() || !newEmail.trim() || newPassword.length < 8) return;
+		setCreating(true);
+		setError(null);
+		const res = await fetch("/api/users", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ name: newName.trim(), email: newEmail.trim(), password: newPassword, role: newRole }),
+		});
+		setCreating(false);
+		if (!res.ok) {
+			const json = await res.json().catch(() => ({}));
+			setError(json.error ?? "Couldn't add the team member.");
+			return;
+		}
+		setNewName("");
+		setNewEmail("");
+		setNewPassword("");
+		setNewRole("WORKER");
+		setAddingMember(false);
 		load();
 	}
 
@@ -95,7 +152,44 @@ export default function UsersPage() {
 
 	return (
 		<div className="space-y-5">
-			<PageHeader title="Team" subtitle={`${users.length} member${users.length === 1 ? "" : "s"} · roles and access`} />
+			<div className="flex flex-wrap items-center justify-between gap-2">
+				<PageHeader title="Team" subtitle={`${users.length} member${users.length === 1 ? "" : "s"} · roles and access`} />
+				<button type="button" className="btn btn-primary btn-sm" onClick={() => setAddingMember((v) => !v)}>
+					{addingMember ? "Cancel" : "+ Add member"}
+				</button>
+			</div>
+
+			{addingMember && (
+				<form onSubmit={onCreate} className="card card-pad space-y-4">
+					<h2 className="font-semibold">Add a team member</h2>
+					<div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+						<div>
+							<label className="field-label">Name</label>
+							<input className="input" value={newName} onChange={(e) => setNewName(e.target.value)} required />
+						</div>
+						<div>
+							<label className="field-label">Email</label>
+							<input className="input" type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} required />
+						</div>
+						<div>
+							<label className="field-label">Temporary password</label>
+							<input className="input" type="text" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} minLength={8} required />
+							<p className="meta mt-1">At least 8 characters. Share it with them directly — they can change it after signing in.</p>
+						</div>
+						<div>
+							<label className="field-label">Role</label>
+							<select className="input" value={newRole} onChange={(e) => setNewRole(e.target.value)}>
+								<option value="WORKER">Worker</option>
+								<option value="MANAGER">Manager</option>
+								<option value="ADMIN">Admin</option>
+							</select>
+						</div>
+					</div>
+					<button className="btn btn-primary btn-sm" disabled={creating}>
+						{creating ? "Adding…" : "Add member"}
+					</button>
+				</form>
+			)}
 
 			{error && <div className="alert alert-danger">{error}</div>}
 
@@ -130,12 +224,16 @@ export default function UsersPage() {
 												Can sign in (active)
 											</label>
 										</div>
+										<div>
+											<label className="field-label">Reset password</label>
+											<input className="input" type="text" placeholder="Leave blank to keep current password" value={editPassword} onChange={(e) => setEditPassword(e.target.value)} minLength={8} />
+										</div>
 									</div>
 									<div className="flex gap-2">
 										<button className="btn btn-primary btn-sm" onClick={() => onUpdate(user.id)} disabled={loading}>
 											{loading ? "Saving…" : "Save changes"}
 										</button>
-										<button className="btn btn-ghost btn-sm" onClick={() => setEditingId(null)} disabled={loading}>
+										<button className="btn btn-ghost btn-sm" onClick={() => { setEditingId(null); setEditPassword(""); }} disabled={loading}>
 											Cancel
 										</button>
 									</div>
@@ -164,13 +262,20 @@ export default function UsersPage() {
 												setEditEmail(user.email);
 												setEditRole(user.role);
 												setEditActive(user.active);
+												setEditPassword("");
 											}}
 										>
 											Edit
 										</button>
-										<button className="btn btn-danger-outline btn-sm" onClick={() => onDelete(user.id)} disabled={loading}>
-											Delete
-										</button>
+										{user.active ? (
+											<button className="btn btn-danger-outline btn-sm" onClick={() => onDeactivate(user.id)} disabled={loading}>
+												Deactivate
+											</button>
+										) : (
+											<button className="btn btn-primary btn-sm" onClick={() => onReactivate(user.id)} disabled={loading}>
+												Reactivate
+											</button>
+										)}
 									</div>
 								</div>
 							)}
