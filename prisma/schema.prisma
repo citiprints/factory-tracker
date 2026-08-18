@@ -136,12 +136,14 @@ model Notification {
   user      User     @relation(fields: [userId], references: [id])
   title     String
   body      String
-  type      String   @default("GENERAL") // TASK_ASSIGNED | SHIFT_ASSIGNED | TASK_DUE | GENERAL
+  type      String   @default("GENERAL") // TASK_ASSIGNED | SHIFT_ASSIGNED | TASK_DUE | GENERAL | COMMENT
   linkPath  String?  // e.g. "/tasks/abc123"
+  taskId    String?  // set for COMMENT notifications, used to compute per-task unread counts
   readAt    DateTime?
   createdAt DateTime @default(now())
 
   @@index([userId, createdAt])
+  @@index([taskId])
 }
 
 model Task {
@@ -193,7 +195,7 @@ model DespatchItem {
   name       String
   quantity   Float
   unit       String  @default("pcs")
-  status     String  @default("PENDING") // PENDING | PACKED | DISPATCHED | DELIVERED
+  status     String  @default("PENDING_CLIENT_APPROVAL") // PENDING_CLIENT_APPROVAL | PRE_PRODUCTION | PRODUCTION | PACKED | DESPATCHED
   order      Int     @default(0)
   specFields String? // JSON: { category, and category-specific spec keys }
 

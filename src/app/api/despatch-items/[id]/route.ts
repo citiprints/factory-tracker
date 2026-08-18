@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/session";
 import { z } from "zod";
 import { DESPATCH_ITEM_STATUSES } from "@/lib/constants";
+import { maybeArchiveTask } from "@/lib/tasks";
 
 const UpdateDespatchItemSchema = z.object({
 	name: z.string().min(1).optional(),
@@ -33,6 +34,10 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 				...("specFields" in data ? { specFields: JSON.stringify(data.specFields ?? {}) } : {}),
 			},
 		});
+
+		if ("status" in data) {
+			await maybeArchiveTask(despatchItem.taskId);
+		}
 
 		return NextResponse.json({ despatchItem });
 	} catch (error) {

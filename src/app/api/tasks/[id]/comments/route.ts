@@ -88,8 +88,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 			userId: uid,
 			title: mentioned ? `${user.name} mentioned you` : `${user.name} commented`,
 			body: parsed.data.body.slice(0, 140),
-			type: "GENERAL",
+			type: "COMMENT",
 			linkPath: `/tasks?open=${id}`,
+			taskId: id,
 		}).catch(() => {});
 	}
 

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/session";
 import { canAccessPayments } from "@/lib/payments";
+import { maybeArchiveTask } from "@/lib/tasks";
 import { z } from "zod";
 
 const UpdateTotalSchema = z.object({
@@ -28,6 +29,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 			data: { totalAmount },
 			select: { id: true, totalAmount: true },
 		});
+
+		await maybeArchiveTask(id);
 
 		return NextResponse.json({ task });
 	} catch (error) {

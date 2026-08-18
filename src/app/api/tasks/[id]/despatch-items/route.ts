@@ -44,7 +44,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 						name: item.name,
 						quantity: item.quantity,
 						unit: item.unit ?? "pcs",
-						status: (item.status as any) ?? "PENDING",
+						status: (item.status as any) ?? "PENDING_CLIENT_APPROVAL",
 						order: item.order ?? index,
 						specFields: item.specFields ? JSON.stringify(item.specFields) : undefined,
 					},

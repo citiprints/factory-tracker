@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/session";
 import { canAccessPayments } from "@/lib/payments";
 import { PAYMENT_MODES } from "@/lib/constants";
+import { maybeArchiveTask } from "@/lib/tasks";
 import { z } from "zod";
 
 const CreatePaymentSchema = z.object({
@@ -56,6 +57,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 			},
 			include: { recordedBy: { select: { id: true, name: true } } },
 		});
+
+		await maybeArchiveTask(id);
 
 		return NextResponse.json({ payment }, { status: 201 });
 	} catch (error) {

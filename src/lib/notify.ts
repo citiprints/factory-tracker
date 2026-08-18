@@ -6,15 +6,16 @@ type NotifyInput = {
   userId: string;
   title: string;
   body: string;
-  type?: "TASK_ASSIGNED" | "SHIFT_ASSIGNED" | "TASK_DUE" | "GENERAL";
+  type?: "TASK_ASSIGNED" | "SHIFT_ASSIGNED" | "TASK_DUE" | "GENERAL" | "COMMENT";
   linkPath?: string;
+  taskId?: string;
 };
 
 // Creates the in-app notification row, then fans out to push (best-effort —
 // a missing/invalid FCM token never blocks the in-app notification).
-export async function notifyUser({ userId, title, body, type = "GENERAL", linkPath }: NotifyInput) {
+export async function notifyUser({ userId, title, body, type = "GENERAL", linkPath, taskId }: NotifyInput) {
   const notification = await prisma.notification.create({
-    data: { userId, title, body, type, linkPath },
+    data: { userId, title, body, type, linkPath, taskId },
   });
 
   await sendPushBestEffort(userId, title, body, linkPath).catch((err) => {

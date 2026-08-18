@@ -25,7 +25,13 @@ export type TaskPriority = (typeof TASK_PRIORITIES)[number];
 export const SUBTASK_STATUSES = ["TODO", "IN_PROGRESS", "DONE", "CANCELLED"] as const;
 export type SubtaskStatus = (typeof SUBTASK_STATUSES)[number];
 
-export const DESPATCH_ITEM_STATUSES = ["PENDING", "PACKED", "DISPATCHED", "DELIVERED"] as const;
+export const DESPATCH_ITEM_STATUSES = [
+  "PENDING_CLIENT_APPROVAL",
+  "PRE_PRODUCTION",
+  "PRODUCTION",
+  "PACKED",
+  "DESPATCHED",
+] as const;
 export type DespatchItemStatus = (typeof DESPATCH_ITEM_STATUSES)[number];
 
 export const PAYMENT_MODES = ["CASH", "BANK_TRANSFER", "UPI", "CHEQUE", "CARD", "OTHER"] as const;

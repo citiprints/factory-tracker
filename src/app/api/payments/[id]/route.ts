@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/session";
 import { canAccessPayments } from "@/lib/payments";
 import { PAYMENT_MODES } from "@/lib/constants";
+import { maybeArchiveTask } from "@/lib/tasks";
 import { z } from "zod";
 
 const UpdatePaymentSchema = z.object({
@@ -35,6 +36,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 			include: { recordedBy: { select: { id: true, name: true } } },
 		});
 
+		await maybeArchiveTask(payment.taskId);
+
 		return NextResponse.json({ payment });
 	} catch (error) {
 		if (error instanceof z.ZodError) {
@@ -52,6 +55,7 @@ export async function DELETE(_: Request, { params }: { params: Promise<{ id: str
 	}
 
 	const { id } = await params;
-	await prisma.payment.delete({ where: { id } });
+	const payment = await prisma.payment.delete({ where: { id } });
+	await maybeArchiveTask(payment.taskId);
 	return NextResponse.json({ ok: true });
 }

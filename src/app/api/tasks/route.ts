@@ -107,8 +107,21 @@ export async function GET(request: NextRequest) {
 		? tasks
 		: tasks.map(({ totalAmount, ...rest }) => rest);
 
+	// Cheap, eager per-request count of this user's unread comment
+	// notifications, grouped by task — same pattern as onboardingStatus above.
+	const unreadCounts = await prisma.notification.groupBy({
+		by: ["taskId"],
+		where: { userId: user.id, type: "COMMENT", readAt: null, taskId: { in: tasks.map((t) => t.id) } },
+		_count: true,
+	});
+	const unreadByTask = new Map(unreadCounts.map((c) => [c.taskId, c._count]));
+	const tasksWithCounts = visibleTasks.map((t) => ({
+		...t,
+		unreadCommentCount: unreadByTask.get(t.id) ?? 0,
+	}));
+
 	return NextResponse.json({
-		tasks: visibleTasks,
+		tasks: tasksWithCounts,
 		pagination: {
 			total: totalCount,
 			limit,
