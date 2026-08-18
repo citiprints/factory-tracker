@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/session";
 import { notifyUser } from "@/lib/notify";
 import { assignTeamToTask } from "@/lib/teams";
+import { canAccessPayments } from "@/lib/payments";
 import { TASK_STATUSES, TASK_PRIORITIES } from "@/lib/constants";
 import { z } from "zod";
 
@@ -97,9 +98,17 @@ export async function GET(request: NextRequest) {
 	const totalCount = await prisma.task.count({
 		where: whereClause
 	});
-	
-	return NextResponse.json({ 
-		tasks,
+
+	// totalAmount is financial data gated to admins/Accounts team — strip it
+	// from the payload entirely for everyone else, rather than trusting the
+	// UI alone to hide it (the raw response would otherwise leak it).
+	const paymentAccess = await canAccessPayments(user);
+	const visibleTasks = paymentAccess
+		? tasks
+		: tasks.map(({ totalAmount, ...rest }) => rest);
+
+	return NextResponse.json({
+		tasks: visibleTasks,
 		pagination: {
 			total: totalCount,
 			limit,

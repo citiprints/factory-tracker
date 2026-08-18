@@ -27,3 +27,6 @@ export type SubtaskStatus = (typeof SUBTASK_STATUSES)[number];
 
 export const DESPATCH_ITEM_STATUSES = ["PENDING", "PACKED", "DISPATCHED", "DELIVERED"] as const;
 export type DespatchItemStatus = (typeof DESPATCH_ITEM_STATUSES)[number];
+
+export const PAYMENT_MODES = ["CASH", "BANK_TRANSFER", "UPI", "CHEQUE", "CARD", "OTHER"] as const;
+export type PaymentMode = (typeof PAYMENT_MODES)[number];

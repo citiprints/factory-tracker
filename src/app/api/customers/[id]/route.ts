@@ -10,8 +10,15 @@ const UpdateCustomerSchema = z.object({
     name: z.string().min(1).optional(),
     email: z.preprocess(emptyToUndef, z.string().email().optional()),
     phone: z.preprocess(emptyToUndef, z.string().optional()),
+    secondaryPhone: z.preprocess(emptyToUndef, z.string().optional()),
     company: z.preprocess(emptyToUndef, z.string().optional()),
     address: z.preprocess(emptyToUndef, z.string().optional()),
+    gstin: z.preprocess(emptyToUndef, z.string().optional()),
+    deliveryContactName: z.preprocess(emptyToUndef, z.string().optional()),
+    deliveryPhone: z.preprocess(emptyToUndef, z.string().optional()),
+    deliverySecondaryPhone: z.preprocess(emptyToUndef, z.string().optional()),
+    deliveryAddress: z.preprocess(emptyToUndef, z.string().optional()),
+    deliveryNotes: z.preprocess(emptyToUndef, z.string().optional()),
 });
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {

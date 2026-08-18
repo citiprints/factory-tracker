@@ -36,7 +36,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
 		const task = await prisma.task.findUnique({
 			where: { id },
-			include: { customerRef: { select: { name: true, email: true } } },
+			include: { customerRef: true },
 		});
 		if (!task) return NextResponse.json({ error: "Task not found" }, { status: 404 });
 
@@ -47,6 +47,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 			data: { status: "REVOKED" },
 		});
 
+		// The Customer record is the one source of truth for these fields —
+		// prefill from whatever's already on file so the customer only has to
+		// confirm/edit rather than retype everything from scratch.
+		const customer = task.customerRef;
 		const token = randomBytes(32).toString("base64url");
 		const form = await prisma.onboardingForm.create({
 			data: {
@@ -54,6 +58,17 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 				token,
 				expiresAt: new Date(Date.now() + ONBOARDING_FORM_TTL_MS),
 				createdById: user.id,
+				billingName: customer?.name,
+				billingEmail: customer?.email,
+				billingPhone: customer?.phone,
+				billingSecondaryPhone: customer?.secondaryPhone,
+				billingAddress: customer?.address,
+				gstin: customer?.gstin,
+				deliveryContactName: customer?.deliveryContactName,
+				deliveryPhone: customer?.deliveryPhone,
+				deliverySecondaryPhone: customer?.deliverySecondaryPhone,
+				deliveryAddress: customer?.deliveryAddress,
+				deliveryNotes: customer?.deliveryNotes,
 			},
 		});
 

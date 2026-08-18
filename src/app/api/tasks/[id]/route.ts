@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { getCurrentUser, isAdmin } from "@/lib/session";
 import { notifyUser } from "@/lib/notify";
 import { assignTeamToTask, unassignTeamFromTask } from "@/lib/teams";
+import { canAccessPayments } from "@/lib/payments";
 import { TASK_STATUSES, TASK_PRIORITIES } from "@/lib/constants";
 import { z } from "zod";
 import { S3Client, DeleteObjectCommand } from "@aws-sdk/client-s3";
@@ -64,6 +65,13 @@ export async function GET(
 
 		if (!task) {
 			return NextResponse.json({ error: "Task not found" }, { status: 404 });
+		}
+
+		// Same totalAmount redaction as the list route — never send financial
+		// data to someone who isn't admin/Accounts, regardless of endpoint.
+		if (!(await canAccessPayments(user))) {
+			const { totalAmount, ...rest } = task;
+			return NextResponse.json({ task: rest });
 		}
 
 		return NextResponse.json({ task });

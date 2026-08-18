@@ -3,7 +3,96 @@ import { useEffect, useState } from "react";
 import { useCurrentUser } from "../UserContext";
 import { PageHeader, EmptyState } from "@/components/ui";
 
-type Customer = { id: string; name: string; email?: string | null; phone?: string | null; company?: string | null; address?: string | null };
+type Customer = {
+    id: string;
+    name: string;
+    email?: string | null;
+    phone?: string | null;
+    secondaryPhone?: string | null;
+    company?: string | null;
+    address?: string | null;
+    gstin?: string | null;
+    deliveryContactName?: string | null;
+    deliveryPhone?: string | null;
+    deliverySecondaryPhone?: string | null;
+    deliveryAddress?: string | null;
+    deliveryNotes?: string | null;
+};
+
+const EMPTY_FORM = {
+    name: "", email: "", phone: "", secondaryPhone: "", company: "", address: "", gstin: "",
+    deliveryContactName: "", deliveryPhone: "", deliverySecondaryPhone: "", deliveryAddress: "", deliveryNotes: "",
+};
+
+type FormState = typeof EMPTY_FORM;
+
+// Same billing/delivery fields the onboarding form collects — the Customer
+// record is the one source of truth both read from and write back to.
+function CustomerFields({ values, onChange, idPrefix }: { values: FormState; onChange: (key: keyof FormState, value: string) => void; idPrefix: string }) {
+    return (
+        <div className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="sm:col-span-2">
+                    <label className="field-label" htmlFor={`${idPrefix}-name`}>Name</label>
+                    <input id={`${idPrefix}-name`} className="input" value={values.name} onChange={e => onChange("name", e.target.value)} required />
+                </div>
+                <div className="sm:col-span-2">
+                    <label className="field-label" htmlFor={`${idPrefix}-company`}>Company</label>
+                    <input id={`${idPrefix}-company`} className="input" value={values.company} onChange={e => onChange("company", e.target.value)} />
+                </div>
+            </div>
+
+            <div className="space-y-3">
+                <h3 className="text-sm font-medium">Billing details</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <input className="input" type="email" placeholder="Email" value={values.email} onChange={e => onChange("email", e.target.value)} />
+                    <input className="input" placeholder="Phone" value={values.phone} onChange={e => onChange("phone", e.target.value)} />
+                    <input className="input" placeholder="Secondary phone" value={values.secondaryPhone} onChange={e => onChange("secondaryPhone", e.target.value)} />
+                    <input className="input" placeholder="GSTIN / Tax ID" value={values.gstin} onChange={e => onChange("gstin", e.target.value)} />
+                    <textarea className="input sm:col-span-2" placeholder="Billing address" value={values.address} onChange={e => onChange("address", e.target.value)} />
+                </div>
+            </div>
+
+            <div className="space-y-3">
+                <h3 className="text-sm font-medium">Delivery details</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <input className="input" placeholder="Contact name" value={values.deliveryContactName} onChange={e => onChange("deliveryContactName", e.target.value)} />
+                    <input className="input" placeholder="Delivery phone" value={values.deliveryPhone} onChange={e => onChange("deliveryPhone", e.target.value)} />
+                    <input className="input" placeholder="Secondary phone" value={values.deliverySecondaryPhone} onChange={e => onChange("deliverySecondaryPhone", e.target.value)} />
+                    <textarea className="input sm:col-span-2" placeholder="Delivery address" value={values.deliveryAddress} onChange={e => onChange("deliveryAddress", e.target.value)} />
+                    <textarea className="input sm:col-span-2" placeholder="Delivery notes" value={values.deliveryNotes} onChange={e => onChange("deliveryNotes", e.target.value)} />
+                </div>
+            </div>
+        </div>
+    );
+}
+
+function toPayload(v: FormState) {
+    return {
+        name: v.name,
+        email: v.email || undefined,
+        phone: v.phone || undefined,
+        secondaryPhone: v.secondaryPhone || undefined,
+        company: v.company || undefined,
+        address: v.address || undefined,
+        gstin: v.gstin || undefined,
+        deliveryContactName: v.deliveryContactName || undefined,
+        deliveryPhone: v.deliveryPhone || undefined,
+        deliverySecondaryPhone: v.deliverySecondaryPhone || undefined,
+        deliveryAddress: v.deliveryAddress || undefined,
+        deliveryNotes: v.deliveryNotes || undefined,
+    };
+}
+
+function toFormState(c: Customer): FormState {
+    return {
+        name: c.name, email: c.email || "", phone: c.phone || "", secondaryPhone: c.secondaryPhone || "",
+        company: c.company || "", address: c.address || "", gstin: c.gstin || "",
+        deliveryContactName: c.deliveryContactName || "", deliveryPhone: c.deliveryPhone || "",
+        deliverySecondaryPhone: c.deliverySecondaryPhone || "", deliveryAddress: c.deliveryAddress || "",
+        deliveryNotes: c.deliveryNotes || "",
+    };
+}
 
 export default function CustomersPage() {
     const currentUser = useCurrentUser();
@@ -13,19 +102,11 @@ export default function CustomersPage() {
     const [loading, setLoading] = useState(true);
     const [showForm, setShowForm] = useState(false);
     const [search, setSearch] = useState("");
-    const [name, setName] = useState("");
-    const [email, setEmail] = useState("");
-    const [phone, setPhone] = useState("");
-    const [company, setCompany] = useState("");
-    const [address, setAddress] = useState("");
+    const [form, setForm] = useState<FormState>(EMPTY_FORM);
     const [creating, setCreating] = useState(false);
 
     const [editingId, setEditingId] = useState<string | null>(null);
-    const [eName, setEName] = useState("");
-    const [eEmail, setEEmail] = useState("");
-    const [ePhone, setEPhone] = useState("");
-    const [eCompany, setECompany] = useState("");
-    const [eAddress, setEAddress] = useState("");
+    const [editForm, setEditForm] = useState<FormState>(EMPTY_FORM);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [rowError, setRowError] = useState<{ id: string; message: string } | null>(null);
@@ -54,7 +135,7 @@ export default function CustomersPage() {
     async function onCreate(e: React.FormEvent) {
         e.preventDefault();
         setError(null);
-        if (!email.trim() && !phone.trim()) {
+        if (!form.email.trim() && !form.phone.trim()) {
             setError("Add an email address or a phone number — either one is enough.");
             return;
         }
@@ -63,10 +144,10 @@ export default function CustomersPage() {
             const res = await fetch("/api/customers", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ name, email: email || undefined, phone: phone || undefined, company: company || undefined, address: address || undefined })
+                body: JSON.stringify(toPayload(form))
             });
             if (res.ok) {
-                setName(""); setEmail(""); setPhone(""); setCompany(""); setAddress("");
+                setForm(EMPTY_FORM);
                 setShowForm(false);
                 load();
             } else {
@@ -86,7 +167,7 @@ export default function CustomersPage() {
             const res = await fetch(`/api/customers/${id}`, {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ name: eName, email: eEmail || undefined, phone: ePhone || undefined, company: eCompany || undefined, address: eAddress || undefined })
+                body: JSON.stringify(toPayload(editForm))
             });
             if (res.ok) {
                 setEditingId(null);
@@ -132,28 +213,7 @@ export default function CustomersPage() {
 
             {showForm && (
                 <form onSubmit={onCreate} className="card card-pad space-y-4">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div className="sm:col-span-2">
-                            <label className="field-label" htmlFor="c-name">Name</label>
-                            <input id="c-name" className="input" value={name} onChange={e => setName(e.target.value)} required />
-                        </div>
-                        <div>
-                            <label className="field-label" htmlFor="c-email">Email</label>
-                            <input id="c-email" className="input" type="email" value={email} onChange={e => setEmail(e.target.value)} />
-                        </div>
-                        <div>
-                            <label className="field-label" htmlFor="c-phone">Phone</label>
-                            <input id="c-phone" className="input" value={phone} onChange={e => setPhone(e.target.value)} />
-                        </div>
-                        <div className="sm:col-span-2">
-                            <label className="field-label" htmlFor="c-company">Company</label>
-                            <input id="c-company" className="input" value={company} onChange={e => setCompany(e.target.value)} />
-                        </div>
-                        <div className="sm:col-span-2">
-                            <label className="field-label" htmlFor="c-address">Address</label>
-                            <textarea id="c-address" className="input" value={address} onChange={e => setAddress(e.target.value)} />
-                        </div>
-                    </div>
+                    <CustomerFields values={form} onChange={(key, value) => setForm(v => ({ ...v, [key]: value }))} idPrefix="c" />
                     {error && <div className="alert alert-danger">{error}</div>}
                     <button disabled={creating} className="btn btn-primary">
                         {creating ? "Adding…" : "Add customer"}
@@ -191,14 +251,8 @@ export default function CustomersPage() {
                     {filtered.map(c => (
                         <li key={c.id} className="card p-4">
                             {editingId === c.id ? (
-                                <form onSubmit={(e) => onSaveEdit(e, c.id)} className="space-y-3">
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                        <input className="input sm:col-span-2" value={eName} onChange={e => setEName(e.target.value)} placeholder="Name" required />
-                                        <input className="input" value={eEmail} onChange={e => setEEmail(e.target.value)} placeholder="Email" />
-                                        <input className="input" value={ePhone} onChange={e => setEPhone(e.target.value)} placeholder="Phone" />
-                                        <input className="input sm:col-span-2" value={eCompany} onChange={e => setECompany(e.target.value)} placeholder="Company" />
-                                        <textarea className="input sm:col-span-2" value={eAddress} onChange={e => setEAddress(e.target.value)} placeholder="Address" />
-                                    </div>
+                                <form onSubmit={(e) => onSaveEdit(e, c.id)} className="space-y-4">
+                                    <CustomerFields values={editForm} onChange={(key, value) => setEditForm(v => ({ ...v, [key]: value }))} idPrefix={`e-${c.id}`} />
                                     {rowError?.id === c.id && <div className="alert alert-danger">{rowError.message}</div>}
                                     <div className="flex gap-2">
                                         <button disabled={saving} className="btn btn-primary btn-sm" type="submit">
@@ -215,11 +269,12 @@ export default function CustomersPage() {
                                             <div className="meta mt-0.5 truncate">
                                                 {[c.company, c.phone, c.email].filter(Boolean).join(" · ") || "No contact details"}
                                             </div>
-                                            {c.address && <div className="text-sm text-muted mt-1">{c.address}</div>}
+                                            {c.address && <div className="text-sm text-muted mt-1">Billing: {c.address}</div>}
+                                            {c.deliveryAddress && <div className="text-sm text-muted mt-1">Delivery: {c.deliveryAddress}</div>}
                                         </div>
                                         {isAdmin && (
                                             <div className="flex items-center gap-2 shrink-0">
-                                                <button type="button" className="btn btn-outline btn-sm" onClick={() => { setEditingId(c.id); setRowError(null); setEName(c.name); setEEmail(c.email || ""); setEPhone(c.phone || ""); setECompany(c.company || ""); setEAddress(c.address || ""); }}>Edit</button>
+                                                <button type="button" className="btn btn-outline btn-sm" onClick={() => { setEditingId(c.id); setRowError(null); setEditForm(toFormState(c)); }}>Edit</button>
                                                 <button type="button" className="btn btn-danger-outline btn-sm" onClick={() => onDelete(c.id)}>Delete</button>
                                             </div>
                                         )}

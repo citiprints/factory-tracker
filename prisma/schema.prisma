@@ -45,6 +45,7 @@ model User {
   onboardingFormsCreated OnboardingForm[] @relation("OnboardingFormCreatedBy")
 
   teamMemberships TeamMember[]
+  paymentsRecorded Payment[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -158,6 +159,7 @@ model Task {
   customerRef    Customer?    @relation(fields: [customerId], references: [id])
   jobNumber      String?
   customFields   String?
+  totalAmount    Float? // gated to admins + Accounts team, see canAccessPayments()
 
   createdById String
   createdBy   User         @relation("TasksCreated", fields: [createdById], references: [id])
@@ -171,6 +173,7 @@ model Task {
   despatchItems   DespatchItem[]
   onboardingForms OnboardingForm[]
   teamAssignments TaskTeamAssignment[]
+  payments        Payment[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -196,6 +199,27 @@ model DespatchItem {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([taskId])
+}
+
+// An individual payment received against a task's total amount — a job
+// paid in installments gets one row per installment. Access is gated to
+// admins/managers and members of the "Accounts" team, see canAccessPayments().
+model Payment {
+  id     String @id @default(cuid())
+  taskId String
+  task   Task   @relation(fields: [taskId], references: [id])
+
+  amount     Float
+  receivedAt DateTime
+  mode       String // CASH | BANK_TRANSFER | UPI | CHEQUE | CARD | OTHER
+  notes      String?
+
+  recordedById String
+  recordedBy   User   @relation(fields: [recordedById], references: [id])
+
+  createdAt DateTime @default(now())
 
   @@index([taskId])
 }
@@ -238,12 +262,20 @@ model OnboardingForm {
 }
 
 model Customer {
-  id        String  @id @default(cuid())
-  name      String
-  email     String?
-  phone     String?
-  company   String?
-  address   String?
+  id             String  @id @default(cuid())
+  name           String
+  email          String?
+  phone          String? // billing phone
+  secondaryPhone String? // billing secondary phone
+  company        String?
+  address        String? // billing address
+  gstin          String?
+
+  deliveryContactName    String?
+  deliveryPhone          String?
+  deliverySecondaryPhone String?
+  deliveryAddress        String?
+  deliveryNotes          String?
 
   tasks     Task[]
 

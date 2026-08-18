@@ -30,7 +30,7 @@ type Task = {
 	updatedAt: string;
 };
 
-type Team = { id: string; name: string };
+type Team = { id: string; name: string; memberIds: string[] };
 
 type Subtask = {
 	id: string;
@@ -72,6 +72,16 @@ type OnboardingForm = {
 	deliveryNotes?: string | null;
 };
 
+type Payment = {
+	id: string;
+	taskId: string;
+	amount: number;
+	receivedAt: string;
+	mode: "CASH" | "BANK_TRANSFER" | "UPI" | "CHEQUE" | "CARD" | "OTHER";
+	notes?: string | null;
+	recordedBy: { id: string; name: string };
+	createdAt: string;
+};
 
 // Loading skeleton component
 function TasksSkeleton() {
@@ -122,6 +132,192 @@ function TasksSkeleton() {
 					</div>
 				))}
 			</div>
+		</div>
+	);
+}
+
+function DateTimeSelector({ label, value, onChange }: { label: string; value: string; onChange: (next: string) => void }) {
+	const datePart = value ? value.split("T")[0] : "";
+	const timePart = value ? (value.split("T")[1] || "") : "";
+
+	function updateDate(nextDate: string) {
+		if (!nextDate && !timePart) return onChange("");
+		onChange(nextDate ? `${nextDate}T${timePart || "00:00"}` : "");
+	}
+
+	function updateTime(nextTime: string) {
+		if (!nextTime && !datePart) return onChange("");
+		onChange(`${datePart || new Date().toISOString().slice(0, 10)}T${nextTime || "00:00"}`);
+	}
+
+	return (
+		<div>
+			<span className="field-label">{label}</span>
+			<div className="flex gap-2">
+				<input type="date" className="input flex-[3]" value={datePart} onChange={(e) => updateDate(e.target.value)} />
+				<input type="time" className="input flex-[2]" value={timePart} onChange={(e) => updateTime(e.target.value)} />
+			</div>
+		</div>
+	);
+}
+
+type DynamicCategory = {
+	id: string;
+	name: string;
+	fields: { id: string; key: string; label: string; type: "TEXT" | "NUMBER" | "DATE" | "BOOLEAN"; required: boolean }[];
+};
+
+// Category-specific spec fields for one item — used by both the "add item"
+// and "edit item" forms so the ~150 lines of per-category fields exist once,
+// not tripled the way the old task-level version was. The category select
+// and the shared Size field live in the one-line row at each call site;
+// this only renders whatever additional fields that category needs.
+// IMPORTANT: this must stay a module-level component, not one defined inside
+// TasksPageInner's render body -- a component defined inside another
+// component's render gets a new identity every render, which makes React
+// unmount/remount it (and its inputs) on every keystroke, kicking focus out
+// after each character typed.
+function ItemSpecFields({
+	category,
+	specFields,
+	onFieldChange,
+	dynamicCategories,
+}: {
+	category: string;
+	specFields: Record<string, any>;
+	onFieldChange: (key: string, value: any) => void;
+	dynamicCategories: DynamicCategory[];
+}) {
+	const f = (key: string) => specFields[key] ?? "";
+	return (
+		<div className="space-y-3">
+			{category === "Rigid Boxes" && (
+				<div className="space-y-3 p-3 border border-line rounded-lg bg-wash">
+					<h3 className="font-medium text-sm">Rigid Box Specifications</h3>
+					<div>
+						<label className="field-label">Box Type</label>
+						<div className="space-y-1">
+							{["Lid & Base", "Magnetic", "Ribbon", "Book", "Custom"].map(type => (
+								<label key={type} className="flex items-center gap-2 text-sm">
+									<input type="radio" name={`boxType-${category}`} value={type} checked={f("boxType") === type} onChange={(e) => onFieldChange("boxType", e.target.value)} />
+									{type}
+								</label>
+							))}
+						</div>
+					</div>
+					<label className="flex items-center gap-2 text-sm">
+						<input type="checkbox" checked={!!specFields["existingSize"]} onChange={(e) => onFieldChange("existingSize", e.target.checked)} />
+						Existing size
+					</label>
+					<input type="text" className="input text-sm" placeholder="Top Outer" value={f("topOuter")} onChange={(e) => onFieldChange("topOuter", e.target.value)} />
+					<input type="text" className="input text-sm" placeholder="Top Inner" value={f("topInner")} onChange={(e) => onFieldChange("topInner", e.target.value)} />
+					<input type="text" className="input text-sm" placeholder="Bottom Outer" value={f("bottomOuter")} onChange={(e) => onFieldChange("bottomOuter", e.target.value)} />
+					<input type="text" className="input text-sm" placeholder="Bottom Inner" value={f("bottomInner")} onChange={(e) => onFieldChange("bottomInner", e.target.value)} />
+					<div>
+						<label className="flex items-center gap-2 text-sm">
+							<input type="checkbox" checked={!!specFields["hasPartition"]} onChange={(e) => onFieldChange("hasPartition", e.target.checked)} />
+							Partition
+						</label>
+						{specFields["hasPartition"] && (
+							<textarea className="input text-sm mt-2" placeholder="Partition description" value={f("partitionDescription")} onChange={(e) => onFieldChange("partitionDescription", e.target.value)} />
+						)}
+					</div>
+				</div>
+			)}
+
+			{category === "Cake Boxes" && (
+				<div className="space-y-3 p-3 border border-line rounded-lg bg-wash">
+					<h3 className="font-medium text-sm">Cake Box Specifications</h3>
+					<label className="flex items-center gap-2 text-sm">
+						<input type="checkbox" checked={!!specFields["existingSize"]} onChange={(e) => onFieldChange("existingSize", e.target.checked)} />
+						Existing size
+					</label>
+					<div>
+						<label className="flex items-center gap-2 text-sm">
+							<input type="checkbox" checked={!!specFields["hasWindow"]} onChange={(e) => onFieldChange("hasWindow", e.target.checked)} />
+							Window
+						</label>
+						{specFields["hasWindow"] && (
+							<input type="text" className="input text-sm mt-2" placeholder="Window details" value={f("windowDetails")} onChange={(e) => onFieldChange("windowDetails", e.target.value)} />
+						)}
+					</div>
+					<div>
+						<label className="flex items-center gap-2 text-sm">
+							<input type="checkbox" checked={!!specFields["innerPrinting"]} onChange={(e) => onFieldChange("innerPrinting", e.target.checked)} />
+							Inner Printing
+						</label>
+						{specFields["innerPrinting"] && (
+							<input type="text" className="input text-sm mt-2" placeholder="Inner printing details" value={f("innerPrintingDetails")} onChange={(e) => onFieldChange("innerPrintingDetails", e.target.value)} />
+						)}
+					</div>
+				</div>
+			)}
+
+			{category === "Paper Bags" && (
+				<div className="space-y-3 p-3 border border-line rounded-lg bg-wash">
+					<h3 className="font-medium text-sm">Paper Bag Specifications</h3>
+					<label className="flex items-center gap-2 text-sm">
+						<input type="checkbox" checked={!!specFields["existingSize"]} onChange={(e) => onFieldChange("existingSize", e.target.checked)} />
+						Existing size
+					</label>
+					<div>
+						<label className="flex items-center gap-2 text-sm">
+							<input type="checkbox" checked={!!specFields["innerPrinting"]} onChange={(e) => onFieldChange("innerPrinting", e.target.checked)} />
+							Inner Printing
+						</label>
+						{specFields["innerPrinting"] && (
+							<input type="text" className="input text-sm mt-2" placeholder="Inner printing details" value={f("innerPrintingDetails")} onChange={(e) => onFieldChange("innerPrintingDetails", e.target.value)} />
+						)}
+					</div>
+					<input type="text" className="input text-sm" placeholder="Rope" value={f("rope")} onChange={(e) => onFieldChange("rope", e.target.value)} />
+				</div>
+			)}
+
+			{category === "Stickers" && (
+				<div className="space-y-3 p-3 border border-line rounded-lg bg-wash">
+					<h3 className="font-medium text-sm">Sticker Specifications</h3>
+					<input type="text" className="input text-sm" placeholder="Shape" value={f("shape")} onChange={(e) => onFieldChange("shape", e.target.value)} />
+					<input type="text" className="input text-sm" placeholder="Material" value={f("material")} onChange={(e) => onFieldChange("material", e.target.value)} />
+				</div>
+			)}
+
+			{category === "Cards" && (
+				<div className="space-y-3 p-3 border border-line rounded-lg bg-wash">
+					<h3 className="font-medium text-sm">Card Specifications</h3>
+					<input type="text" className="input text-sm" placeholder="Sides" value={f("sides")} onChange={(e) => onFieldChange("sides", e.target.value)} />
+					<input type="text" className="input text-sm" placeholder="Material" value={f("material")} onChange={(e) => onFieldChange("material", e.target.value)} />
+				</div>
+			)}
+
+			{category === "Invitation" && (
+				<div className="space-y-3 p-3 border border-line rounded-lg bg-wash">
+					<h3 className="font-medium text-sm">Invitation Specifications</h3>
+					<label className="flex items-center gap-2 text-sm">
+						<input type="checkbox" checked={!!specFields["existingSize"]} onChange={(e) => onFieldChange("existingSize", e.target.checked)} />
+						Existing size
+					</label>
+					<input type="text" className="input text-sm" placeholder="Material" value={f("material")} onChange={(e) => onFieldChange("material", e.target.value)} />
+					<input type="text" className="input text-sm" placeholder="Envelope" value={f("envelope")} onChange={(e) => onFieldChange("envelope", e.target.value)} />
+				</div>
+			)}
+
+			{dynamicCategories.find(c => c.name === category)?.fields.map(fld => (
+				<div key={fld.id} className="text-sm">
+					<label className="block mb-1">{fld.label}{fld.required && " *"}</label>
+					{fld.type === "TEXT" && (
+						<input className="input text-sm" value={f(fld.key)} onChange={(e) => onFieldChange(fld.key, e.target.value)} />
+					)}
+					{fld.type === "NUMBER" && (
+						<input type="number" className="input text-sm" value={f(fld.key)} onChange={(e) => onFieldChange(fld.key, e.target.valueAsNumber)} />
+					)}
+					{fld.type === "DATE" && (
+						<input type="date" className="input text-sm" value={f(fld.key)} onChange={(e) => onFieldChange(fld.key, e.target.value)} />
+					)}
+					{fld.type === "BOOLEAN" && (
+						<label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={!!specFields[fld.key]} onChange={(e) => onFieldChange(fld.key, e.target.checked)} /> {fld.label}</label>
+					)}
+				</div>
+			))}
 		</div>
 	);
 }
@@ -186,6 +382,9 @@ function TasksPageInner() {
 	const [assigneeIds, setAssigneeIds] = useState<string[]>([]);
 	const [teams, setTeams] = useState<Team[]>([]);
 	const [teamIds, setTeamIds] = useState<string[]>([]);
+	// Purely for deciding what to render — the payment API routes are the
+	// real gate, this just avoids showing a section that would 403 anyway.
+	const canSeePayments = isAdmin || (!!currentUser && !!teams.find(t => t.name === "Accounts")?.memberIds.includes(currentUser.id));
 	const [isQuotation, setIsQuotation] = useState<boolean>(false);
 	const [files, setFiles] = useState<File[]>([]);
 	const [dragActive, setDragActive] = useState(false);
@@ -234,6 +433,19 @@ function TasksPageInner() {
 	});
 	const [fillSameAsBilling, setFillSameAsBilling] = useState(false);
 	const [viewingOnboardingTaskId, setViewingOnboardingTaskId] = useState<string | null>(null);
+
+	// Payments: total + list per task, loaded lazily (Accounts-team gated,
+	// so unlike most sections this is never fetched until asked for).
+	const [paymentData, setPaymentData] = useState<Record<string, { totalAmount: number | null; payments: Payment[] } | undefined>>({});
+	const [paymentLoadingTaskId, setPaymentLoadingTaskId] = useState<string | null>(null);
+	const [editingTotalTaskId, setEditingTotalTaskId] = useState<string | null>(null);
+	const [totalAmountDraft, setTotalAmountDraft] = useState("");
+	const [addingPaymentToTaskId, setAddingPaymentToTaskId] = useState<string | null>(null);
+	const [paymentAmount, setPaymentAmount] = useState("");
+	const [paymentDate, setPaymentDate] = useState(() => new Date().toISOString().slice(0, 10));
+	const [paymentMode, setPaymentMode] = useState("CASH");
+	const [paymentNotes, setPaymentNotes] = useState("");
+	const [editingPaymentId, setEditingPaymentId] = useState<string | null>(null);
 
 	const AUTO_REFRESH_SECONDS = 120;
 	const [groupBy, setGroupBy] = useState<"none"|"customer"|"status"|"assignee">("none");
@@ -372,7 +584,7 @@ function TasksPageInner() {
 
 			if (resTeams.ok) {
 				const json = await resTeams.json();
-				setTeams((json.teams ?? []).map((t: any) => ({ id: t.id, name: t.name })));
+				setTeams((json.teams ?? []).map((t: any) => ({ id: t.id, name: t.name, memberIds: (t.members ?? []).map((m: any) => m.userId) })));
 			}
 		} catch (error) {
 			console.error("Failed to load data:", error);
@@ -435,6 +647,9 @@ function TasksPageInner() {
 		})
 		.filter(task => (!assignedToMeOnly ? true : isAssignedToMe(task)));
 
+	const PAYMENT_MODE_LABELS: Record<string, string> = {
+		CASH: "Cash", BANK_TRANSFER: "Bank Transfer", UPI: "UPI", CHEQUE: "Cheque", CARD: "Card", OTHER: "Other",
+	};
 	const STATUS_LABELS: Record<string, string> = {
 		TODO: "To do", IN_PROGRESS: "In progress", BLOCKED: "Blocked", DONE: "Done",
 		CANCELLED: "Cancelled", ARCHIVED: "Archived", CLIENT_TO_REVERT: "Client to revert", OTHERS: "Others",
@@ -782,6 +997,105 @@ function TasksPageInner() {
 		load();
 	}
 
+	// Payment functions
+	async function loadPayments(taskId: string) {
+		setPaymentLoadingTaskId(taskId);
+		try {
+			const res = await fetch(`/api/tasks/${taskId}/payments`);
+			if (res.ok) {
+				const json = await res.json();
+				setPaymentData(prev => ({ ...prev, [taskId]: { totalAmount: json.totalAmount ?? null, payments: json.payments ?? [] } }));
+			}
+		} finally {
+			setPaymentLoadingTaskId(null);
+		}
+	}
+
+	function startEditTotal(taskId: string, current: number | null | undefined) {
+		setEditingTotalTaskId(taskId);
+		setTotalAmountDraft(current != null ? String(current) : "");
+	}
+
+	async function saveTotal(taskId: string) {
+		const res = await fetch(`/api/tasks/${taskId}/payments/total`, {
+			method: "PATCH",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ totalAmount: totalAmountDraft.trim() === "" ? null : Number(totalAmountDraft) })
+		});
+		if (res.ok) {
+			setEditingTotalTaskId(null);
+			loadPayments(taskId);
+		} else {
+			const json = await res.json().catch(() => ({}));
+			setError(typeof json.error === "string" ? json.error : "Couldn't save the total amount.");
+		}
+	}
+
+	function resetPaymentDraft() {
+		setPaymentAmount("");
+		setPaymentDate(new Date().toISOString().slice(0, 10));
+		setPaymentMode("CASH");
+		setPaymentNotes("");
+	}
+
+	async function addPayment(taskId: string) {
+		if (!paymentAmount.trim()) return;
+		const res = await fetch(`/api/tasks/${taskId}/payments`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				amount: Number(paymentAmount),
+				receivedAt: new Date(paymentDate).toISOString(),
+				mode: paymentMode,
+				notes: paymentNotes || undefined,
+			})
+		});
+		if (res.ok) {
+			resetPaymentDraft();
+			setAddingPaymentToTaskId(null);
+			loadPayments(taskId);
+		} else {
+			const json = await res.json().catch(() => ({}));
+			setError(typeof json.error === "string" ? json.error : "Couldn't record the payment.");
+		}
+	}
+
+	function startEditPayment(p: Payment) {
+		setEditingPaymentId(p.id);
+		setPaymentAmount(String(p.amount));
+		setPaymentDate(p.receivedAt.slice(0, 10));
+		setPaymentMode(p.mode);
+		setPaymentNotes(p.notes ?? "");
+	}
+
+	async function saveEditedPayment(taskId: string, paymentId: string) {
+		if (!paymentAmount.trim()) return;
+		const res = await fetch(`/api/payments/${paymentId}`, {
+			method: "PATCH",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				amount: Number(paymentAmount),
+				receivedAt: new Date(paymentDate).toISOString(),
+				mode: paymentMode,
+				notes: paymentNotes || undefined,
+			})
+		});
+		if (res.ok) {
+			resetPaymentDraft();
+			setEditingPaymentId(null);
+			loadPayments(taskId);
+		} else {
+			const json = await res.json().catch(() => ({}));
+			setError(typeof json.error === "string" ? json.error : "Couldn't save the payment.");
+		}
+	}
+
+	async function deletePayment(taskId: string, paymentId: string) {
+		if (!confirm("Delete this payment record?")) return;
+		const res = await fetch(`/api/payments/${paymentId}`, { method: "DELETE" });
+		if (res.ok) loadPayments(taskId);
+	}
+
 	// File upload handlers
 	const handleDrag = (e: React.DragEvent) => {
 		e.preventDefault();
@@ -920,218 +1234,6 @@ function TasksPageInner() {
 		setNewCustomerPhone("");
 		load();
 		notifyDataChange();
-	}
-
-	function DateTimeSelector({ label, value, onChange }: { label: string; value: string; onChange: (next: string) => void }) {
-		const datePart = value ? value.split("T")[0] : "";
-		const timePart = value ? (value.split("T")[1] || "") : "";
-
-		function updateDate(nextDate: string) {
-			if (!nextDate && !timePart) return onChange("");
-			onChange(nextDate ? `${nextDate}T${timePart || "00:00"}` : "");
-		}
-
-		function updateTime(nextTime: string) {
-			if (!nextTime && !datePart) return onChange("");
-			onChange(`${datePart || new Date().toISOString().slice(0, 10)}T${nextTime || "00:00"}`);
-		}
-
-		return (
-			<div>
-				<span className="field-label">{label}</span>
-				<div className="flex gap-2">
-					<input type="date" className="input flex-[3]" value={datePart} onChange={(e) => updateDate(e.target.value)} />
-					<input type="time" className="input flex-[2]" value={timePart} onChange={(e) => updateTime(e.target.value)} />
-				</div>
-			</div>
-		);
-	}
-
-	// Category + spec fields for one item — used by both the "add item" and
-	// "edit item" forms so the ~150 lines of per-category fields exist once,
-	// not tripled the way the old task-level version was.
-	function ItemSpecFields({
-		category,
-		specFields,
-		onCategoryChange,
-		onFieldChange,
-	}: {
-		category: string;
-		specFields: Record<string, any>;
-		onCategoryChange: (next: string) => void;
-		onFieldChange: (key: string, value: any) => void;
-	}) {
-		const f = (key: string) => specFields[key] ?? "";
-		return (
-			<div className="space-y-3">
-				<select className="input text-sm" value={category} onChange={(e) => onCategoryChange(e.target.value)}>
-					<option value="">Select type</option>
-					<option value="Rigid Boxes">Rigid Boxes</option>
-					<option value="Cake Boxes">Cake Boxes</option>
-					<option value="Paper Bags">Paper Bags</option>
-					<option value="Stickers">Stickers</option>
-					<option value="Cards">Cards</option>
-					<option value="Invitation">Invitation</option>
-					<option value="Paperboard Boxes">Paperboard Boxes</option>
-					<option value="Others">Others</option>
-					{dynamicCategories.map(c => (<option key={c.id} value={c.name}>{c.name}</option>))}
-				</select>
-
-				{category === "Rigid Boxes" && (
-					<div className="space-y-3 p-3 border border-line rounded-lg bg-wash">
-						<h3 className="font-medium text-sm">Rigid Box Specifications</h3>
-						<div>
-							<label className="field-label">Box Type</label>
-							<div className="space-y-1">
-								{["Lid & Base", "Magnetic", "Ribbon", "Book", "Custom"].map(type => (
-									<label key={type} className="flex items-center gap-2 text-sm">
-										<input type="radio" name={`boxType-${category}`} value={type} checked={f("boxType") === type} onChange={(e) => onFieldChange("boxType", e.target.value)} />
-										{type}
-									</label>
-								))}
-							</div>
-						</div>
-						<div>
-							<label className="field-label">Size</label>
-							<div className="flex items-center gap-2">
-								<input type="text" className="input flex-1 text-sm" placeholder="Enter size" value={f("size")} onChange={(e) => onFieldChange("size", e.target.value)} />
-								<label className="flex items-center gap-2 text-sm">
-									<input type="checkbox" checked={!!specFields["existingSize"]} onChange={(e) => onFieldChange("existingSize", e.target.checked)} />
-									Existing size
-								</label>
-							</div>
-						</div>
-						<input type="text" className="input text-sm" placeholder="Top Outer" value={f("topOuter")} onChange={(e) => onFieldChange("topOuter", e.target.value)} />
-						<input type="text" className="input text-sm" placeholder="Top Inner" value={f("topInner")} onChange={(e) => onFieldChange("topInner", e.target.value)} />
-						<input type="text" className="input text-sm" placeholder="Bottom Outer" value={f("bottomOuter")} onChange={(e) => onFieldChange("bottomOuter", e.target.value)} />
-						<input type="text" className="input text-sm" placeholder="Bottom Inner" value={f("bottomInner")} onChange={(e) => onFieldChange("bottomInner", e.target.value)} />
-						<div>
-							<label className="flex items-center gap-2 text-sm">
-								<input type="checkbox" checked={!!specFields["hasPartition"]} onChange={(e) => onFieldChange("hasPartition", e.target.checked)} />
-								Partition
-							</label>
-							{specFields["hasPartition"] && (
-								<textarea className="input text-sm mt-2" placeholder="Partition description" value={f("partitionDescription")} onChange={(e) => onFieldChange("partitionDescription", e.target.value)} />
-							)}
-						</div>
-					</div>
-				)}
-
-				{category === "Cake Boxes" && (
-					<div className="space-y-3 p-3 border border-line rounded-lg bg-wash">
-						<h3 className="font-medium text-sm">Cake Box Specifications</h3>
-						<div>
-							<label className="field-label">Size</label>
-							<div className="flex items-center gap-2">
-								<input type="text" className="input flex-1 text-sm" placeholder="Enter size" value={f("size")} onChange={(e) => onFieldChange("size", e.target.value)} />
-								<label className="flex items-center gap-2 text-sm">
-									<input type="checkbox" checked={!!specFields["existingSize"]} onChange={(e) => onFieldChange("existingSize", e.target.checked)} />
-									Existing size
-								</label>
-							</div>
-						</div>
-						<div>
-							<label className="flex items-center gap-2 text-sm">
-								<input type="checkbox" checked={!!specFields["hasWindow"]} onChange={(e) => onFieldChange("hasWindow", e.target.checked)} />
-								Window
-							</label>
-							{specFields["hasWindow"] && (
-								<input type="text" className="input text-sm mt-2" placeholder="Window details" value={f("windowDetails")} onChange={(e) => onFieldChange("windowDetails", e.target.value)} />
-							)}
-						</div>
-						<div>
-							<label className="flex items-center gap-2 text-sm">
-								<input type="checkbox" checked={!!specFields["innerPrinting"]} onChange={(e) => onFieldChange("innerPrinting", e.target.checked)} />
-								Inner Printing
-							</label>
-							{specFields["innerPrinting"] && (
-								<input type="text" className="input text-sm mt-2" placeholder="Inner printing details" value={f("innerPrintingDetails")} onChange={(e) => onFieldChange("innerPrintingDetails", e.target.value)} />
-							)}
-						</div>
-					</div>
-				)}
-
-				{category === "Paper Bags" && (
-					<div className="space-y-3 p-3 border border-line rounded-lg bg-wash">
-						<h3 className="font-medium text-sm">Paper Bag Specifications</h3>
-						<div>
-							<label className="field-label">Size</label>
-							<div className="flex items-center gap-2">
-								<input type="text" className="input flex-1 text-sm" placeholder="Enter size" value={f("size")} onChange={(e) => onFieldChange("size", e.target.value)} />
-								<label className="flex items-center gap-2 text-sm">
-									<input type="checkbox" checked={!!specFields["existingSize"]} onChange={(e) => onFieldChange("existingSize", e.target.checked)} />
-									Existing size
-								</label>
-							</div>
-						</div>
-						<div>
-							<label className="flex items-center gap-2 text-sm">
-								<input type="checkbox" checked={!!specFields["innerPrinting"]} onChange={(e) => onFieldChange("innerPrinting", e.target.checked)} />
-								Inner Printing
-							</label>
-							{specFields["innerPrinting"] && (
-								<input type="text" className="input text-sm mt-2" placeholder="Inner printing details" value={f("innerPrintingDetails")} onChange={(e) => onFieldChange("innerPrintingDetails", e.target.value)} />
-							)}
-						</div>
-						<input type="text" className="input text-sm" placeholder="Rope" value={f("rope")} onChange={(e) => onFieldChange("rope", e.target.value)} />
-					</div>
-				)}
-
-				{category === "Stickers" && (
-					<div className="space-y-3 p-3 border border-line rounded-lg bg-wash">
-						<h3 className="font-medium text-sm">Sticker Specifications</h3>
-						<input type="text" className="input text-sm" placeholder="Size" value={f("size")} onChange={(e) => onFieldChange("size", e.target.value)} />
-						<input type="text" className="input text-sm" placeholder="Shape" value={f("shape")} onChange={(e) => onFieldChange("shape", e.target.value)} />
-						<input type="text" className="input text-sm" placeholder="Material" value={f("material")} onChange={(e) => onFieldChange("material", e.target.value)} />
-					</div>
-				)}
-
-				{category === "Cards" && (
-					<div className="space-y-3 p-3 border border-line rounded-lg bg-wash">
-						<h3 className="font-medium text-sm">Card Specifications</h3>
-						<input type="text" className="input text-sm" placeholder="Size" value={f("size")} onChange={(e) => onFieldChange("size", e.target.value)} />
-						<input type="text" className="input text-sm" placeholder="Sides" value={f("sides")} onChange={(e) => onFieldChange("sides", e.target.value)} />
-						<input type="text" className="input text-sm" placeholder="Material" value={f("material")} onChange={(e) => onFieldChange("material", e.target.value)} />
-					</div>
-				)}
-
-				{category === "Invitation" && (
-					<div className="space-y-3 p-3 border border-line rounded-lg bg-wash">
-						<h3 className="font-medium text-sm">Invitation Specifications</h3>
-						<div>
-							<label className="field-label">Size</label>
-							<div className="flex items-center gap-2">
-								<input type="text" className="input flex-1 text-sm" placeholder="Enter size" value={f("size")} onChange={(e) => onFieldChange("size", e.target.value)} />
-								<label className="flex items-center gap-2 text-sm">
-									<input type="checkbox" checked={!!specFields["existingSize"]} onChange={(e) => onFieldChange("existingSize", e.target.checked)} />
-									Existing size
-								</label>
-							</div>
-						</div>
-						<input type="text" className="input text-sm" placeholder="Material" value={f("material")} onChange={(e) => onFieldChange("material", e.target.value)} />
-						<input type="text" className="input text-sm" placeholder="Envelope" value={f("envelope")} onChange={(e) => onFieldChange("envelope", e.target.value)} />
-					</div>
-				)}
-
-				{dynamicCategories.find(c => c.name === category)?.fields.map(fld => (
-					<div key={fld.id} className="text-sm">
-						<label className="block mb-1">{fld.label}{fld.required && " *"}</label>
-						{fld.type === "TEXT" && (
-							<input className="input text-sm" value={f(fld.key)} onChange={(e) => onFieldChange(fld.key, e.target.value)} />
-						)}
-						{fld.type === "NUMBER" && (
-							<input type="number" className="input text-sm" value={f(fld.key)} onChange={(e) => onFieldChange(fld.key, e.target.valueAsNumber)} />
-						)}
-						{fld.type === "DATE" && (
-							<input type="date" className="input text-sm" value={f(fld.key)} onChange={(e) => onFieldChange(fld.key, e.target.value)} />
-						)}
-						{fld.type === "BOOLEAN" && (
-							<label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={!!specFields[fld.key]} onChange={(e) => onFieldChange(fld.key, e.target.checked)} /> {fld.label}</label>
-						)}
-					</div>
-				))}
-			</div>
-		);
 	}
 
 	async function deleteTask(id: string) {
@@ -1417,15 +1519,30 @@ function TasksPageInner() {
 						)}
 						<div className="space-y-2 p-3 border border-line rounded-lg bg-wash">
 							<div className="flex flex-wrap gap-2">
-								<input className="input flex-[3] min-w-[8rem]" placeholder="Item name" value={newDespatchName} onChange={(e) => setNewDespatchName(e.target.value)} />
-								<input className="input flex-1 min-w-[5rem]" type="number" min="0" step="any" placeholder="Qty" value={newDespatchQuantity} onChange={(e) => setNewDespatchQuantity(e.target.value)} />
-								<input className="input flex-1 min-w-[5rem]" placeholder="Unit" value={newDespatchUnit} onChange={(e) => setNewDespatchUnit(e.target.value)} />
+								<select className="input flex-1 min-w-[8rem]" value={newDespatchCategory} onChange={(e) => setNewDespatchCategory(e.target.value)}>
+									<option value="">Select type</option>
+									<option value="Rigid Boxes">Rigid Boxes</option>
+									<option value="Cake Boxes">Cake Boxes</option>
+									<option value="Paper Bags">Paper Bags</option>
+									<option value="Stickers">Stickers</option>
+									<option value="Cards">Cards</option>
+									<option value="Invitation">Invitation</option>
+									<option value="Paperboard Boxes">Paperboard Boxes</option>
+									<option value="Others">Others</option>
+									{dynamicCategories.map(c => (<option key={c.id} value={c.name}>{c.name}</option>))}
+								</select>
+								<input className="input flex-[2] min-w-[8rem]" placeholder="Item name" value={newDespatchName} onChange={(e) => setNewDespatchName(e.target.value)} />
+								<input className="input flex-1 min-w-[6rem]" placeholder="Size" value={newDespatchSpecFields.size ?? ""} onChange={(e) => setNewDespatchSpecFields(v => ({ ...v, size: e.target.value }))} />
+								<div className="flex gap-1 flex-1 min-w-[8rem]">
+									<input className="input" type="number" min="0" step="any" placeholder="Qty" value={newDespatchQuantity} onChange={(e) => setNewDespatchQuantity(e.target.value)} />
+									<input className="input" placeholder="Unit" value={newDespatchUnit} onChange={(e) => setNewDespatchUnit(e.target.value)} />
+								</div>
 							</div>
 							<ItemSpecFields
 								category={newDespatchCategory}
 								specFields={newDespatchSpecFields}
-								onCategoryChange={setNewDespatchCategory}
 								onFieldChange={(key, value) => setNewDespatchSpecFields(v => ({ ...v, [key]: value }))}
+								dynamicCategories={dynamicCategories}
 							/>
 							<button type="button" className="btn btn-outline btn-sm" onClick={addDespatchDraftRow}>+ Add item</button>
 						</div>
@@ -2263,15 +2380,30 @@ function TasksPageInner() {
 												className="space-y-2 p-3 border border-line rounded-lg bg-wash mb-3"
 											>
 												<div className="flex flex-wrap gap-2">
-													<input className="input flex-[3] min-w-[8rem] text-sm" placeholder="Item name" value={newDespatchName} onChange={(e) => setNewDespatchName(e.target.value)} required />
-													<input className="input flex-1 min-w-[5rem] text-sm" type="number" min="0" step="any" placeholder="Qty" value={newDespatchQuantity} onChange={(e) => setNewDespatchQuantity(e.target.value)} required />
-													<input className="input flex-1 min-w-[5rem] text-sm" placeholder="Unit" value={newDespatchUnit} onChange={(e) => setNewDespatchUnit(e.target.value)} />
+													<select className="input flex-1 min-w-[8rem] text-sm" value={newDespatchCategory} onChange={(e) => setNewDespatchCategory(e.target.value)}>
+														<option value="">Select type</option>
+														<option value="Rigid Boxes">Rigid Boxes</option>
+														<option value="Cake Boxes">Cake Boxes</option>
+														<option value="Paper Bags">Paper Bags</option>
+														<option value="Stickers">Stickers</option>
+														<option value="Cards">Cards</option>
+														<option value="Invitation">Invitation</option>
+														<option value="Paperboard Boxes">Paperboard Boxes</option>
+														<option value="Others">Others</option>
+														{dynamicCategories.map(c => (<option key={c.id} value={c.name}>{c.name}</option>))}
+													</select>
+													<input className="input flex-[2] min-w-[8rem] text-sm" placeholder="Item name" value={newDespatchName} onChange={(e) => setNewDespatchName(e.target.value)} required />
+													<input className="input flex-1 min-w-[6rem] text-sm" placeholder="Size" value={newDespatchSpecFields.size ?? ""} onChange={(e) => setNewDespatchSpecFields(v => ({ ...v, size: e.target.value }))} />
+													<div className="flex gap-1 flex-1 min-w-[8rem]">
+														<input className="input text-sm" type="number" min="0" step="any" placeholder="Qty" value={newDespatchQuantity} onChange={(e) => setNewDespatchQuantity(e.target.value)} required />
+														<input className="input text-sm" placeholder="Unit" value={newDespatchUnit} onChange={(e) => setNewDespatchUnit(e.target.value)} />
+													</div>
 												</div>
 												<ItemSpecFields
 													category={newDespatchCategory}
 													specFields={newDespatchSpecFields}
-													onCategoryChange={setNewDespatchCategory}
 													onFieldChange={(key, value) => setNewDespatchSpecFields(v => ({ ...v, [key]: value }))}
+													dynamicCategories={dynamicCategories}
 												/>
 												<button type="submit" className="btn btn-accent btn-sm">Add</button>
 											</form>
@@ -2287,15 +2419,30 @@ function TasksPageInner() {
 																className="space-y-2"
 															>
 																<div className="flex flex-wrap gap-2">
-																	<input className="input flex-[3] min-w-[8rem] text-sm" placeholder="Item name" value={editDespatchName} onChange={(e) => setEditDespatchName(e.target.value)} required />
-																	<input className="input flex-1 min-w-[5rem] text-sm" type="number" min="0" step="any" placeholder="Qty" value={editDespatchQuantity} onChange={(e) => setEditDespatchQuantity(e.target.value)} required />
-																	<input className="input flex-1 min-w-[5rem] text-sm" placeholder="Unit" value={editDespatchUnit} onChange={(e) => setEditDespatchUnit(e.target.value)} />
+																	<select className="input flex-1 min-w-[8rem] text-sm" value={editDespatchCategory} onChange={(e) => setEditDespatchCategory(e.target.value)}>
+																		<option value="">Select type</option>
+																		<option value="Rigid Boxes">Rigid Boxes</option>
+																		<option value="Cake Boxes">Cake Boxes</option>
+																		<option value="Paper Bags">Paper Bags</option>
+																		<option value="Stickers">Stickers</option>
+																		<option value="Cards">Cards</option>
+																		<option value="Invitation">Invitation</option>
+																		<option value="Paperboard Boxes">Paperboard Boxes</option>
+																		<option value="Others">Others</option>
+																		{dynamicCategories.map(c => (<option key={c.id} value={c.name}>{c.name}</option>))}
+																	</select>
+																	<input className="input flex-[2] min-w-[8rem] text-sm" placeholder="Item name" value={editDespatchName} onChange={(e) => setEditDespatchName(e.target.value)} required />
+																	<input className="input flex-1 min-w-[6rem] text-sm" placeholder="Size" value={editDespatchSpecFields.size ?? ""} onChange={(e) => setEditDespatchSpecFields(v => ({ ...v, size: e.target.value }))} />
+																	<div className="flex gap-1 flex-1 min-w-[8rem]">
+																		<input className="input text-sm" type="number" min="0" step="any" placeholder="Qty" value={editDespatchQuantity} onChange={(e) => setEditDespatchQuantity(e.target.value)} required />
+																		<input className="input text-sm" placeholder="Unit" value={editDespatchUnit} onChange={(e) => setEditDespatchUnit(e.target.value)} />
+																	</div>
 																</div>
 																<ItemSpecFields
 																	category={editDespatchCategory}
 																	specFields={editDespatchSpecFields}
-																	onCategoryChange={setEditDespatchCategory}
 																	onFieldChange={(key, value) => setEditDespatchSpecFields(v => ({ ...v, [key]: value }))}
+																	dynamicCategories={dynamicCategories}
 																/>
 																<div className="flex gap-2">
 																	<button type="submit" className="btn btn-accent btn-sm">Save</button>
@@ -2414,6 +2561,146 @@ function TasksPageInner() {
 											);
 										})()}
 									</div>
+
+					{/* Payment Section — admins + Accounts team only */}
+					{canSeePayments && (
+						<div className="mt-4 border-t border-gray-200 pt-4">
+							<div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+								<h4 className="text-sm font-medium">Payment</h4>
+								{!(t.id in paymentData) && (
+									<button
+										type="button"
+										className="text-xs px-2 py-1 rounded border"
+										onClick={() => loadPayments(t.id)}
+										disabled={paymentLoadingTaskId === t.id}
+									>
+										{paymentLoadingTaskId === t.id ? "Loading..." : "Show payments"}
+									</button>
+								)}
+							</div>
+
+							{t.id in paymentData && (() => {
+								const data = paymentData[t.id];
+								const total = data?.totalAmount ?? null;
+								const payments = data?.payments ?? [];
+								const received = payments.reduce((sum, p) => sum + p.amount, 0);
+								const balance = total != null ? total - received : null;
+								return (
+									<div className="space-y-3">
+										<div className="flex flex-wrap items-center gap-2">
+											<span className="text-sm font-medium">Total amount:</span>
+											{editingTotalTaskId === t.id ? (
+												<>
+													<input type="number" min="0" step="any" className="input text-sm !w-32" value={totalAmountDraft} onChange={(e) => setTotalAmountDraft(e.target.value)} />
+													<button type="button" className="btn btn-accent btn-sm" onClick={() => saveTotal(t.id)}>Save</button>
+													<button type="button" className="btn btn-outline btn-sm" onClick={() => setEditingTotalTaskId(null)}>Cancel</button>
+												</>
+											) : (
+												<>
+													<span className="text-sm">{total != null ? `₹${total.toLocaleString()}` : "Not set"}</span>
+													<button type="button" className="text-xs px-2 py-1 rounded border" onClick={() => startEditTotal(t.id, total)}>Edit</button>
+												</>
+											)}
+										</div>
+
+										{total != null && (
+											<div className="flex flex-wrap gap-2">
+												<span className="chip chip-ok">Received: ₹{received.toLocaleString()}</span>
+												<span className={`chip ${(balance ?? 0) > 0 ? "chip-warn" : "chip-plain"}`}>Balance: ₹{(balance ?? 0).toLocaleString()}</span>
+											</div>
+										)}
+
+										{payments.length > 0 ? (
+											<div className="space-y-2">
+												{payments.map((p) => (
+													<div key={p.id} className="p-2.5 border border-gray-200 rounded bg-white">
+														{editingPaymentId === p.id ? (
+															<form onSubmit={(e) => { e.preventDefault(); saveEditedPayment(t.id, p.id); }} className="space-y-2">
+																<div className="flex flex-wrap gap-2">
+																	<input type="number" min="0" step="any" className="input text-sm flex-1 min-w-[6rem]" placeholder="Amount" value={paymentAmount} onChange={(e) => setPaymentAmount(e.target.value)} required />
+																	<input type="date" className="input text-sm flex-1 min-w-[8rem]" value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)} required />
+																	<select className="input text-sm flex-1 min-w-[8rem]" value={paymentMode} onChange={(e) => setPaymentMode(e.target.value)}>
+																		<option value="CASH">Cash</option>
+																		<option value="BANK_TRANSFER">Bank Transfer</option>
+																		<option value="UPI">UPI</option>
+																		<option value="CHEQUE">Cheque</option>
+																		<option value="CARD">Card</option>
+																		<option value="OTHER">Other</option>
+																	</select>
+																</div>
+																<input className="input text-sm" placeholder="Notes (optional)" value={paymentNotes} onChange={(e) => setPaymentNotes(e.target.value)} />
+																<div className="flex gap-2">
+																	<button type="submit" className="btn btn-accent btn-sm">Save</button>
+																	<button type="button" className="btn btn-outline btn-sm" onClick={() => { setEditingPaymentId(null); resetPaymentDraft(); }}>Cancel</button>
+																</div>
+															</form>
+														) : (
+															<div className="flex flex-wrap items-center justify-between gap-2">
+																<div>
+																	<span className="text-sm font-medium">₹{p.amount.toLocaleString()}</span>
+																	<span className="chip chip-plain ml-2">{PAYMENT_MODE_LABELS[p.mode]}</span>
+																	<span className="meta ml-2">{new Date(p.receivedAt).toLocaleDateString()} · recorded by {p.recordedBy.name}</span>
+																	{p.notes && <div className="text-xs text-muted mt-1">{p.notes}</div>}
+																</div>
+																<div className="flex items-center gap-2">
+																	<button
+																		type="button"
+																		className="btn btn-outline btn-sm"
+																		onClick={() => { setAddingPaymentToTaskId(null); startEditPayment(p); }}
+																	>
+																		Edit
+																	</button>
+																	<button
+																		type="button"
+																		onClick={() => deletePayment(t.id, p.id)}
+																		className="text-xs px-2 py-1 rounded border text-red-600 hover:text-red-800 hover:bg-red-50"
+																	>
+																		Delete
+																	</button>
+																</div>
+															</div>
+														)}
+													</div>
+												))}
+											</div>
+										) : (
+											<p className="text-xs text-gray-500 italic">No payments recorded yet</p>
+										)}
+
+										{addingPaymentToTaskId === t.id ? (
+											<form onSubmit={(e) => { e.preventDefault(); addPayment(t.id); }} className="space-y-2 p-3 border border-line rounded-lg bg-wash">
+												<div className="flex flex-wrap gap-2">
+													<input type="number" min="0" step="any" className="input text-sm flex-1 min-w-[6rem]" placeholder="Amount" value={paymentAmount} onChange={(e) => setPaymentAmount(e.target.value)} required />
+													<input type="date" className="input text-sm flex-1 min-w-[8rem]" value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)} required />
+													<select className="input text-sm flex-1 min-w-[8rem]" value={paymentMode} onChange={(e) => setPaymentMode(e.target.value)}>
+														<option value="CASH">Cash</option>
+														<option value="BANK_TRANSFER">Bank Transfer</option>
+														<option value="UPI">UPI</option>
+														<option value="CHEQUE">Cheque</option>
+														<option value="CARD">Card</option>
+														<option value="OTHER">Other</option>
+													</select>
+												</div>
+												<input className="input text-sm" placeholder="Notes (optional)" value={paymentNotes} onChange={(e) => setPaymentNotes(e.target.value)} />
+												<div className="flex gap-2">
+													<button type="submit" className="btn btn-accent btn-sm">Add payment</button>
+													<button type="button" className="btn btn-outline btn-sm" onClick={() => { setAddingPaymentToTaskId(null); resetPaymentDraft(); }}>Cancel</button>
+												</div>
+											</form>
+										) : (
+											<button
+												type="button"
+												className="btn btn-outline btn-sm"
+												onClick={() => { setEditingPaymentId(null); resetPaymentDraft(); setAddingPaymentToTaskId(t.id); }}
+											>
+												+ Add payment
+											</button>
+										)}
+									</div>
+								);
+							})()}
+						</div>
+					)}
 								</div>
 							</details>
 						)}

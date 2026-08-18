@@ -18,8 +18,15 @@ const CreateCustomerSchema = z
         name: z.string().min(1),
         email: optionalEmail,
         phone: optionalTrimmed,
+        secondaryPhone: optionalTrimmed,
         company: optionalTrimmed,
         address: optionalTrimmed,
+        gstin: optionalTrimmed,
+        deliveryContactName: optionalTrimmed,
+        deliveryPhone: optionalTrimmed,
+        deliverySecondaryPhone: optionalTrimmed,
+        deliveryAddress: optionalTrimmed,
+        deliveryNotes: optionalTrimmed,
     })
     .refine((d) => d.email || d.phone, {
         message: "Add an email address or a phone number (either one is enough).",
