@@ -166,7 +166,13 @@ export async function PATCH(
 
 		const task = await prisma.task.update({
 			where: { id },
-			data: taskFields,
+			data: {
+				...taskFields,
+				// customFields is a String column -- the create route already
+				// stringifies it (src/app/api/tasks/route.ts), this route was
+				// passing the raw object straight to Prisma and crashing.
+				...("customFields" in taskFields ? { customFields: JSON.stringify(taskFields.customFields) } : {}),
+			},
 			include: {
 				customerRef: true,
 				assignments: {
