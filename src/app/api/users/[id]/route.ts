@@ -24,8 +24,20 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 	try {
 		const json = await request.json();
 		const { password, ...data } = UpdateUserSchema.parse(json);
-		if (data.email) data.email = data.email.trim().toLowerCase();
 		const { id } = await params;
+
+		if (data.email) {
+			data.email = data.email.trim().toLowerCase();
+			// The DB unique index on email is plain case-sensitive collation,
+			// so without this check "Name@x.com" and "name@x.com" could both
+			// exist -- re-check case-insensitively before every email change.
+			const collision = await prisma.user.findFirst({
+				where: { email: { equals: data.email, mode: "insensitive" }, id: { not: id } },
+			});
+			if (collision) {
+				return NextResponse.json({ error: "Another account already uses that email." }, { status: 409 });
+			}
+		}
 
 		const updatedUser = await prisma.user.update({
 			where: { id },
@@ -58,24 +70,61 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 	}
 }
 
-export async function DELETE(_: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
 	const user = await getCurrentUser();
 	if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-	
+
 	// Only admins can remove users
 	if (user.role !== "ADMIN") {
 		return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 	}
-	
+
 	try {
 		const { id } = await params;
-		
+
 		// Don't allow users to delete themselves
 		if (id === user.id) {
 			return NextResponse.json({ error: "Cannot delete your own account" }, { status: 400 });
 		}
-		
-		// Soft-delete rather than hard-delete: a real employee will almost
+
+		const permanent = new URL(request.url).searchParams.get("permanent") === "true";
+
+		if (permanent) {
+			// Only ever succeeds for an account with zero history -- every
+			// relation below is a required (non-nullable) foreign key to
+			// User with no cascade, so Postgres itself refuses the delete the
+			// moment any task/comment/attendance/etc. references this person.
+			// That's the real guardrail; this check just lets us give a clear
+			// reason instead of a raw 500. Postgres reports this as a RESTRICT
+			// violation (SQLSTATE 23001), which Prisma doesn't map to its usual
+			// P2003 foreign-key code, so match on the raw SQLSTATE instead.
+			try {
+				await prisma.$transaction([
+					prisma.session.deleteMany({ where: { userId: id } }),
+					prisma.pushSubscription.deleteMany({ where: { userId: id } }),
+					prisma.notification.deleteMany({ where: { userId: id } }),
+					prisma.teamMember.deleteMany({ where: { userId: id } }),
+					prisma.user.delete({ where: { id } }),
+				]);
+				return NextResponse.json({ success: true, permanent: true });
+			} catch (err: any) {
+				const blockedByHistory =
+					err?.code === "P2003" ||
+					err?.code === "P2025" ||
+					String(err?.message ?? "").includes("23001") ||
+					String(err?.message ?? "").includes("RESTRICT") ||
+					String(err?.message ?? "").includes("foreign key");
+				if (blockedByHistory) {
+					return NextResponse.json(
+						{ error: "This account has tasks, comments, or attendance history on record and can't be permanently deleted. Deactivate it instead." },
+						{ status: 409 }
+					);
+				}
+				throw err;
+			}
+		}
+
+		// Soft-delete (deactivate) is the default: a real employee will almost
 		// always have tasks, sessions, attendance logs, or shifts referencing
 		// them, and none of those relations cascade -- a hard delete throws
 		// a foreign-key error and this would just 500. Deactivating matches

@@ -120,6 +120,20 @@ export default function UsersPage() {
 		load();
 	}
 
+	async function onPermanentDelete(userId: string, name: string) {
+		if (!confirm(`Permanently delete ${name}? This cannot be undone, and only works if they have no tasks, comments, or attendance history — otherwise it'll tell you to deactivate instead.`)) return;
+		setLoading(true);
+		setError(null);
+		const res = await fetch(`/api/users/${userId}?permanent=true`, { method: "DELETE" });
+		setLoading(false);
+		if (!res.ok) {
+			const json = await res.json().catch(() => ({}));
+			setError(json.error ?? "Couldn't permanently delete the user.");
+			return;
+		}
+		load();
+	}
+
 	async function onCreate(e: React.FormEvent) {
 		e.preventDefault();
 		if (!newName.trim() || !newEmail.trim() || newPassword.length < 8) return;
@@ -276,6 +290,14 @@ export default function UsersPage() {
 												Reactivate
 											</button>
 										)}
+										<button
+											className="text-xs text-danger hover:underline shrink-0"
+											onClick={() => onPermanentDelete(user.id, user.name)}
+											disabled={loading}
+											title="Only works if this account has no tasks, comments, or attendance history"
+										>
+											Delete permanently
+										</button>
 									</div>
 								</div>
 							)}
