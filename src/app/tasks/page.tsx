@@ -433,6 +433,21 @@ function TasksPageInner() {
 	// is expanded, plus state for the "fill in manually" modal.
 	const [onboardingForms, setOnboardingForms] = useState<Record<string, OnboardingForm | null>>({});
 	const [onboardingLoadingTaskId, setOnboardingLoadingTaskId] = useState<string | null>(null);
+	// Visibility is separate from the data cache above -- once loaded, toggling
+	// "Show status"/"Hide status" just shows/hides it without refetching.
+	const [expandedOnboarding, setExpandedOnboarding] = useState<Set<string>>(new Set());
+	function toggleOnboarding(taskId: string) {
+		if (expandedOnboarding.has(taskId)) {
+			setExpandedOnboarding(prev => {
+				const next = new Set(prev);
+				next.delete(taskId);
+				return next;
+			});
+			return;
+		}
+		setExpandedOnboarding(prev => new Set(prev).add(taskId));
+		if (!(taskId in onboardingForms)) loadOnboardingForm(taskId);
+	}
 	const [fillingOnboardingTaskId, setFillingOnboardingTaskId] = useState<string | null>(null);
 	const [onboardingFillValues, setOnboardingFillValues] = useState({
 		billingName: "", billingEmail: "", billingPhone: "", billingSecondaryPhone: "", billingAddress: "", gstin: "",
@@ -445,6 +460,20 @@ function TasksPageInner() {
 	// so unlike most sections this is never fetched until asked for).
 	const [paymentData, setPaymentData] = useState<Record<string, { totalAmount: number | null; payments: Payment[] } | undefined>>({});
 	const [paymentLoadingTaskId, setPaymentLoadingTaskId] = useState<string | null>(null);
+	// Same show/hide-without-refetch pattern as expandedOnboarding above.
+	const [expandedPayments, setExpandedPayments] = useState<Set<string>>(new Set());
+	function togglePayments(taskId: string) {
+		if (expandedPayments.has(taskId)) {
+			setExpandedPayments(prev => {
+				const next = new Set(prev);
+				next.delete(taskId);
+				return next;
+			});
+			return;
+		}
+		setExpandedPayments(prev => new Set(prev).add(taskId));
+		if (!(taskId in paymentData)) loadPayments(taskId);
+	}
 	const [editingTotalTaskId, setEditingTotalTaskId] = useState<string | null>(null);
 	const [totalAmountDraft, setTotalAmountDraft] = useState("");
 	const [addingPaymentToTaskId, setAddingPaymentToTaskId] = useState<string | null>(null);
@@ -667,6 +696,19 @@ function TasksPageInner() {
 		if (priority === "URGENT") return "chip chip-danger";
 		if (priority === "HIGH") return "chip chip-warn";
 		if (priority === "MEDIUM") return "chip chip-info";
+		return "chip chip-plain";
+	}
+	const ITEM_STATUS_LABELS: Record<string, string> = {
+		PENDING_CLIENT_APPROVAL: "Pending Client Approval",
+		PRE_PRODUCTION: "Pre Production",
+		PRODUCTION: "Production",
+		PACKED: "Packed",
+		DESPATCHED: "Despatched",
+	};
+	function itemStatusChipClass(status: string): string {
+		if (status === "DESPATCHED") return "chip chip-ok";
+		if (status === "PACKED") return "chip chip-warn";
+		if (status === "PRODUCTION") return "chip chip-info";
 		return "chip chip-plain";
 	}
 	function formatDueWithDaysRemaining(dueAt: string): string {
@@ -1996,12 +2038,24 @@ function TasksPageInner() {
 											{t.onboardingStatus === "PENDING" && <span className="chip chip-warn">Onboarding: Pending</span>}
 											{t.onboardingStatus === "SUBMITTED" && <span className="chip chip-ok">Onboarding: Submitted</span>}
 										</div>
+										{t.despatchItems && t.despatchItems.length > 0 && (
+											<div className="mt-1.5 flex flex-wrap items-center gap-1">
+												{t.despatchItems.map(item => (
+													<span key={item.id} className={itemStatusChipClass(item.status)}>
+														{item.name} · {ITEM_STATUS_LABELS[item.status] ?? item.status}
+													</span>
+												))}
+											</div>
+										)}
 									</summary>
 									<div className="pt-2">
 							{/* Customer / assignees / creator — plain labeled lines, no pills */}
 							<div className="mt-1 space-y-0.5 text-sm">
 								{t.customerRef?.name && (
-									<div>Customer: {t.customerRef.name}</div>
+									<div>
+										Customer: {t.customerRef.name}{" "}
+										<a href="/customers" className="text-xs text-blue-600 hover:underline">(billing & delivery details)</a>
+									</div>
 								)}
 								{((t.assignments && t.assignments.length > 0) || (t.teamAssignments && t.teamAssignments.length > 0)) && (
 									<div>
@@ -2196,11 +2250,7 @@ function TasksPageInner() {
 																</div>
 																<div className="flex items-center gap-2">
 																	<select
-																		className={`input text-xs py-1 !w-auto chip ${
-																			item.status === "DESPATCHED" ? "chip-ok" :
-																			item.status === "PACKED" ? "chip-warn" :
-																			item.status === "PRODUCTION" ? "chip-info" : "chip-plain"
-																		}`}
+																		className={`input text-xs py-1 !w-auto ${itemStatusChipClass(item.status)}`}
 																		value={item.status}
 																		onChange={(e) => updateDespatchItemStatus(item.id, e.target.value as DespatchItem["status"])}
 																	>
@@ -2474,19 +2524,17 @@ function TasksPageInner() {
 									<div className="mt-4 border-t border-gray-200 pt-4">
 										<div className="flex flex-wrap items-center justify-between gap-2 mb-3">
 											<h4 className="text-sm font-medium">Onboarding form</h4>
-											{!(t.id in onboardingForms) && (
-												<button
-													type="button"
-													className="text-xs px-2 py-1 rounded border"
-													onClick={() => loadOnboardingForm(t.id)}
-													disabled={onboardingLoadingTaskId === t.id}
-												>
-													{onboardingLoadingTaskId === t.id ? "Loading..." : "Show status"}
-												</button>
-											)}
+											<button
+												type="button"
+												className="text-xs px-2 py-1 rounded border"
+												onClick={() => toggleOnboarding(t.id)}
+												disabled={onboardingLoadingTaskId === t.id}
+											>
+												{onboardingLoadingTaskId === t.id ? "Loading..." : expandedOnboarding.has(t.id) ? "Hide status" : "Show status"}
+											</button>
 										</div>
 
-										{t.id in onboardingForms && (() => {
+										{expandedOnboarding.has(t.id) && t.id in onboardingForms && (() => {
 											const form = onboardingForms[t.id];
 											return (
 												<div className="space-y-2">
@@ -2528,19 +2576,17 @@ function TasksPageInner() {
 						<div className="mt-4 border-t border-gray-200 pt-4">
 							<div className="flex flex-wrap items-center justify-between gap-2 mb-3">
 								<h4 className="text-sm font-medium">Payment</h4>
-								{!(t.id in paymentData) && (
-									<button
-										type="button"
-										className="text-xs px-2 py-1 rounded border"
-										onClick={() => loadPayments(t.id)}
-										disabled={paymentLoadingTaskId === t.id}
-									>
-										{paymentLoadingTaskId === t.id ? "Loading..." : "Show payments"}
-									</button>
-								)}
+								<button
+									type="button"
+									className="text-xs px-2 py-1 rounded border"
+									onClick={() => togglePayments(t.id)}
+									disabled={paymentLoadingTaskId === t.id}
+								>
+									{paymentLoadingTaskId === t.id ? "Loading..." : expandedPayments.has(t.id) ? "Hide payments" : "Show payments"}
+								</button>
 							</div>
 
-							{t.id in paymentData && (() => {
+							{expandedPayments.has(t.id) && t.id in paymentData && (() => {
 								const data = paymentData[t.id];
 								const total = data?.totalAmount ?? null;
 								const payments = data?.payments ?? [];

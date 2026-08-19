@@ -110,6 +110,12 @@ export default function CustomersPage() {
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [rowError, setRowError] = useState<{ id: string; message: string } | null>(null);
+    // Full billing/delivery details (GSTIN, delivery contact, notes, etc.) are
+    // collapsed by default -- this is the one place they're always visible
+    // regardless of how the customer was onboarded (form, manual fill, or a
+    // direct edit here), so expanding it is the answer to "where do I see
+    // this customer's billing/delivery info".
+    const [expandedId, setExpandedId] = useState<string | null>(null);
 
     async function load() {
         setLoading(true);
@@ -272,13 +278,42 @@ export default function CustomersPage() {
                                             {c.address && <div className="text-sm text-muted mt-1">Billing: {c.address}</div>}
                                             {c.deliveryAddress && <div className="text-sm text-muted mt-1">Delivery: {c.deliveryAddress}</div>}
                                         </div>
-                                        {isAdmin && (
-                                            <div className="flex items-center gap-2 shrink-0">
-                                                <button type="button" className="btn btn-outline btn-sm" onClick={() => { setEditingId(c.id); setRowError(null); setEditForm(toFormState(c)); }}>Edit</button>
-                                                <button type="button" className="btn btn-danger-outline btn-sm" onClick={() => onDelete(c.id)}>Delete</button>
-                                            </div>
-                                        )}
+                                        <div className="flex items-center gap-2 shrink-0">
+                                            <button
+                                                type="button"
+                                                className="btn btn-outline btn-sm"
+                                                onClick={() => setExpandedId(expandedId === c.id ? null : c.id)}
+                                            >
+                                                {expandedId === c.id ? "Hide details" : "Billing & delivery details"}
+                                            </button>
+                                            {isAdmin && (
+                                                <>
+                                                    <button type="button" className="btn btn-outline btn-sm" onClick={() => { setEditingId(c.id); setRowError(null); setEditForm(toFormState(c)); }}>Edit</button>
+                                                    <button type="button" className="btn btn-danger-outline btn-sm" onClick={() => onDelete(c.id)}>Delete</button>
+                                                </>
+                                            )}
+                                        </div>
                                     </div>
+                                    {expandedId === c.id && (
+                                        <div className="mt-3 pt-3 border-t border-line grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                            <div className="space-y-1.5">
+                                                <h3 className="text-sm font-medium">Billing details</h3>
+                                                <div className="text-sm text-muted">Email: {c.email || <span className="italic">Not provided</span>}</div>
+                                                <div className="text-sm text-muted">Phone: {c.phone || <span className="italic">Not provided</span>}</div>
+                                                <div className="text-sm text-muted">Secondary phone: {c.secondaryPhone || <span className="italic">Not provided</span>}</div>
+                                                <div className="text-sm text-muted">GSTIN / Tax ID: {c.gstin || <span className="italic">Not provided</span>}</div>
+                                                <div className="text-sm text-muted">Address: {c.address || <span className="italic">Not provided</span>}</div>
+                                            </div>
+                                            <div className="space-y-1.5">
+                                                <h3 className="text-sm font-medium">Delivery details</h3>
+                                                <div className="text-sm text-muted">Contact name: {c.deliveryContactName || <span className="italic">Not provided</span>}</div>
+                                                <div className="text-sm text-muted">Phone: {c.deliveryPhone || <span className="italic">Not provided</span>}</div>
+                                                <div className="text-sm text-muted">Secondary phone: {c.deliverySecondaryPhone || <span className="italic">Not provided</span>}</div>
+                                                <div className="text-sm text-muted">Address: {c.deliveryAddress || <span className="italic">Not provided</span>}</div>
+                                                <div className="text-sm text-muted">Notes: {c.deliveryNotes || <span className="italic">Not provided</span>}</div>
+                                            </div>
+                                        </div>
+                                    )}
                                     {rowError?.id === c.id && <div className="alert alert-danger mt-2">{rowError.message}</div>}
                                 </div>
                             )}
