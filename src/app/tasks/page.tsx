@@ -5,6 +5,7 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { useCurrentUser } from "../UserContext";
 import TaskComments from "@/components/TaskComments";
 import { useRefreshCounts } from "../CountsContext";
+import { CustomerFields, EMPTY_CUSTOMER_FORM, customerFormToPayload, type CustomerFormState } from "@/components/CustomerFields";
 
 type Task = {
 	id: string;
@@ -137,18 +138,18 @@ function TasksSkeleton() {
 	);
 }
 
-function DateTimeSelector({ label, value, onChange }: { label: string; value: string; onChange: (next: string) => void }) {
+function DateTimeSelector({ label, value, onChange, defaultTime = "00:00" }: { label: string; value: string; onChange: (next: string) => void; defaultTime?: string }) {
 	const datePart = value ? value.split("T")[0] : "";
 	const timePart = value ? (value.split("T")[1] || "") : "";
 
 	function updateDate(nextDate: string) {
 		if (!nextDate && !timePart) return onChange("");
-		onChange(nextDate ? `${nextDate}T${timePart || "00:00"}` : "");
+		onChange(nextDate ? `${nextDate}T${timePart || defaultTime}` : "");
 	}
 
 	function updateTime(nextTime: string) {
 		if (!nextTime && !datePart) return onChange("");
-		onChange(`${datePart || new Date().toISOString().slice(0, 10)}T${nextTime || "00:00"}`);
+		onChange(`${datePart || new Date().toISOString().slice(0, 10)}T${nextTime || defaultTime}`);
 	}
 
 	return (
@@ -381,11 +382,11 @@ function TasksPageInner() {
 	const [customerId, setCustomerId] = useState<string>("");
 	const [users, setUsers] = useState<{ id: string; name: string }[]>([]);
 	const [showNewCustomerForm, setShowNewCustomerForm] = useState(false);
-	const [newCustomerName, setNewCustomerName] = useState("");
-	const [newCustomerEmail, setNewCustomerEmail] = useState("");
-	const [newCustomerPhone, setNewCustomerPhone] = useState("");
-	const [newCustomerCompany, setNewCustomerCompany] = useState("");
-	const [newCustomerAddress, setNewCustomerAddress] = useState("");
+	// Same shape as the onboarding form's billing/delivery fields -- the quick
+	// "Add New Customer" form here is meant to be identical to it, so a
+	// customer created from a task has the same details a customer created
+	// through onboarding would.
+	const [newCustomerForm, setNewCustomerForm] = useState<CustomerFormState>(EMPTY_CUSTOMER_FORM);
 	const [assigneeIds, setAssigneeIds] = useState<string[]>([]);
 	const [teams, setTeams] = useState<Team[]>([]);
 	const [teamIds, setTeamIds] = useState<string[]>([]);
@@ -523,8 +524,8 @@ function TasksPageInner() {
 	}
 
 	async function createNewCustomer() {
-		if (!newCustomerName.trim()) return;
-		if (!newCustomerEmail.trim() && !newCustomerPhone.trim()) {
+		if (!newCustomerForm.name.trim()) return;
+		if (!newCustomerForm.email.trim() && !newCustomerForm.phone.trim()) {
 			setError("Add an email address or a phone number — either one is enough.");
 			return;
 		}
@@ -533,25 +534,15 @@ function TasksPageInner() {
 			const res = await fetch("/api/customers", {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({
-					name: newCustomerName.trim(),
-					email: newCustomerEmail.trim() || undefined,
-					phone: newCustomerPhone.trim() || undefined,
-					company: newCustomerCompany.trim() || undefined,
-					address: newCustomerAddress.trim() || undefined
-				})
+				body: JSON.stringify(customerFormToPayload(newCustomerForm))
 			});
-			
+
 			if (res.ok) {
 				const { customer } = await res.json();
 				setCustomers(prev => [...prev, customer]);
 				setCustomerId(customer.id);
 				setShowNewCustomerForm(false);
-				setNewCustomerName("");
-				setNewCustomerEmail("");
-				setNewCustomerPhone("");
-				setNewCustomerCompany("");
-				setNewCustomerAddress("");
+				setNewCustomerForm(EMPTY_CUSTOMER_FORM);
 				setError(null);
 			} else {
 				const errorData = await res.json();
@@ -682,22 +673,6 @@ function TasksPageInner() {
 	const PAYMENT_MODE_LABELS: Record<string, string> = {
 		CASH: "Cash", BANK_TRANSFER: "Bank Transfer", UPI: "UPI", CHEQUE: "Cheque", CARD: "Card", OTHER: "Other",
 	};
-	const STATUS_LABELS: Record<string, string> = {
-		TODO: "To do", IN_PROGRESS: "In progress", BLOCKED: "Blocked", DONE: "Done",
-		CANCELLED: "Cancelled", ARCHIVED: "Archived", CLIENT_TO_REVERT: "Client to revert", OTHERS: "Others",
-	};
-	function statusChipClass(status: Task["status"]): string {
-		if (status === "DONE") return "chip chip-ok";
-		if (status === "IN_PROGRESS") return "chip chip-info";
-		if (status === "BLOCKED" || status === "CANCELLED") return "chip chip-danger";
-		return "chip chip-plain";
-	}
-	function priorityChipClass(priority: Task["priority"]): string {
-		if (priority === "URGENT") return "chip chip-danger";
-		if (priority === "HIGH") return "chip chip-warn";
-		if (priority === "MEDIUM") return "chip chip-info";
-		return "chip chip-plain";
-	}
 	function itemStatusChipClass(status: string): string {
 		if (status === "DESPATCHED") return "chip chip-ok";
 		if (status === "PACKED") return "chip chip-warn";
@@ -1279,9 +1254,7 @@ function TasksPageInner() {
 		setFiles([]);
 		setDespatchDraft([]);
 		setShowNewCustomerForm(false);
-		setNewCustomerName("");
-		setNewCustomerEmail("");
-		setNewCustomerPhone("");
+		setNewCustomerForm(EMPTY_CUSTOMER_FORM);
 		load();
 		notifyDataChange();
 	}
@@ -1401,11 +1374,7 @@ function TasksPageInner() {
 									type="button"
 									onClick={() => {
 										setShowNewCustomerForm(false);
-										setNewCustomerName("");
-										setNewCustomerEmail("");
-										setNewCustomerPhone("");
-										setNewCustomerCompany("");
-										setNewCustomerAddress("");
+										setNewCustomerForm(EMPTY_CUSTOMER_FORM);
 										setError(null);
 									}}
 									className="text-sm text-gray-500 hover:text-gray-700"
@@ -1413,41 +1382,10 @@ function TasksPageInner() {
 									Cancel
 								</button>
 							</div>
-							<input
-								type="text"
-								className="input"
-								placeholder="Customer name *"
-								value={newCustomerName}
-								onChange={e => setNewCustomerName(e.target.value)}
-								required
-							/>
-							<input
-								type="email"
-								className="input"
-								placeholder="Email (this or phone)"
-								value={newCustomerEmail}
-								onChange={e => setNewCustomerEmail(e.target.value)}
-							/>
-							<input
-								type="tel"
-								className="input"
-								placeholder="Phone (this or email)"
-								value={newCustomerPhone}
-								onChange={e => setNewCustomerPhone(e.target.value)}
-							/>
-							<input
-								type="text"
-								className="input"
-								placeholder="Company (optional)"
-								value={newCustomerCompany}
-								onChange={e => setNewCustomerCompany(e.target.value)}
-							/>
-							<textarea
-								className="input"
-								placeholder="Address (optional)"
-								value={newCustomerAddress}
-								onChange={e => setNewCustomerAddress(e.target.value)}
-								rows={3}
+							<CustomerFields
+								values={newCustomerForm}
+								onChange={(key, value) => setNewCustomerForm(v => ({ ...v, [key]: value }))}
+								idPrefix="new-task-customer"
 							/>
 							{error && <p className="text-sm text-danger">{error}</p>}
 							<button
@@ -1507,7 +1445,7 @@ function TasksPageInner() {
 					{!isQuotation && (
 						<>
 							<DateTimeSelector label="Start" value={start} onChange={setStart} />
-							<DateTimeSelector label="Due" value={due} onChange={setDue} />
+							<DateTimeSelector label="Due" value={due} onChange={setDue} defaultTime="17:00" />
 						</>
 					)}
 
@@ -1826,70 +1764,35 @@ function TasksPageInner() {
 											<div>
 												<label className="field-label">Customer</label>
 												{showNewCustomerForm ? (
-													<div className="space-y-3 p-3 border border-line rounded-lg bg-wash">
-							<div className="flex items-center justify-between">
-														<h3 className="font-medium text-sm">Add New Customer</h3>
-														<button
-															type="button"
-																								onClick={() => {
-										setShowNewCustomerForm(false);
-										setNewCustomerName("");
-										setNewCustomerEmail("");
-										setNewCustomerPhone("");
-										setNewCustomerCompany("");
-										setNewCustomerAddress("");
-										setError(null);
-									}}
-															className="text-sm text-gray-500 hover:text-gray-700"
-														>
-															Cancel
-														</button>
-													</div>
-													<input
-														type="text"
-														className="input"
-														placeholder="Customer name *"
-														value={newCustomerName}
-														onChange={e => setNewCustomerName(e.target.value)}
-														required
-													/>
-													<input
-														type="email"
-														className="input"
-														placeholder="Email (this or phone)"
-														value={newCustomerEmail}
-														onChange={e => setNewCustomerEmail(e.target.value)}
-													/>
-													<input
-														type="tel"
-														className="input"
-														placeholder="Phone (this or email)"
-														value={newCustomerPhone}
-														onChange={e => setNewCustomerPhone(e.target.value)}
-													/>
-													<input
-														type="text"
-														className="input"
-														placeholder="Company (optional)"
-														value={newCustomerCompany}
-														onChange={e => setNewCustomerCompany(e.target.value)}
-													/>
-													<textarea
-														className="input"
-														placeholder="Address (optional)"
-														value={newCustomerAddress}
-														onChange={e => setNewCustomerAddress(e.target.value)}
-														rows={3}
-													/>
-													{error && <p className="text-sm text-danger">{error}</p>}
+											<div className="space-y-3 p-3 border border-line rounded-lg bg-wash">
+												<div className="flex items-center justify-between">
+													<h3 className="font-medium text-sm">Add New Customer</h3>
 													<button
 														type="button"
-														onClick={createNewCustomer}
-														className="btn btn-accent btn-block"
+														onClick={() => {
+															setShowNewCustomerForm(false);
+															setNewCustomerForm(EMPTY_CUSTOMER_FORM);
+															setError(null);
+														}}
+														className="text-sm text-gray-500 hover:text-gray-700"
 													>
-														Create Customer
+														Cancel
 													</button>
 												</div>
+												<CustomerFields
+													values={newCustomerForm}
+													onChange={(key, value) => setNewCustomerForm(v => ({ ...v, [key]: value }))}
+													idPrefix="edit-task-customer"
+												/>
+												{error && <p className="text-sm text-danger">{error}</p>}
+												<button
+													type="button"
+													onClick={createNewCustomer}
+													className="btn btn-accent btn-block"
+												>
+													Create Customer
+												</button>
+											</div>
 											) : (
 												<select className="input" value={customerId} onChange={e => {
 													if (e.target.value === "add-new") {
@@ -1939,7 +1842,7 @@ function TasksPageInner() {
 									)}
 
 									<DateTimeSelector label="Start" value={editStart} onChange={setEditStart} />
-									<DateTimeSelector label="Due" value={editDue} onChange={setEditDue} />
+									<DateTimeSelector label="Due" value={editDue} onChange={setEditDue} defaultTime="17:00" />
 
 									{/* File Upload */}
 									<div
@@ -2013,9 +1916,7 @@ function TasksPageInner() {
 											setAssigneeIds([]);
 											setTeamIds([]);
 											setShowNewCustomerForm(false);
-											setNewCustomerName("");
-											setNewCustomerEmail("");
-											setNewCustomerPhone("");
+											setNewCustomerForm(EMPTY_CUSTOMER_FORM);
 										}}>Cancel</button>
 									</div>
 								</form>
@@ -2026,8 +1927,6 @@ function TasksPageInner() {
 										<div className="flex flex-wrap items-center gap-2">
 											<span className="text-[10px] w-5 h-5 inline-flex items-center justify-center rounded-full bg-black text-white shrink-0">{index + 1}</span>
 											<span className="font-medium">{t.title}</span>
-											<span className={statusChipClass(t.status)}>{STATUS_LABELS[t.status] ?? t.status}</span>
-											<span className={priorityChipClass(t.priority)}>{t.priority}</span>
 											{t.dueAt && <span className="meta">{formatDueWithDaysRemaining(t.dueAt)}</span>}
 											{t.onboardingStatus === "PENDING" && <span className="chip chip-warn">Onboarding: Pending</span>}
 											{t.onboardingStatus === "SUBMITTED" && <span className="chip chip-ok">Onboarding: Submitted</span>}
@@ -2169,10 +2068,11 @@ function TasksPageInner() {
 												<div className="grid grid-cols-2 gap-3">
 													<div>
 														<label className="field-label">Due Date</label>
-														<DateTimeSelector 
-															label="Due" 
-															value={subtaskDueAt} 
-															onChange={setSubtaskDueAt} 
+														<DateTimeSelector
+															label="Due"
+															value={subtaskDueAt}
+															onChange={setSubtaskDueAt}
+															defaultTime="17:00"
 														/>
 													</div>
 													<div>
@@ -2257,6 +2157,7 @@ function TasksPageInner() {
 																			label="Due" 
 																			value={editSubtaskDueAt} 
 																			onChange={setEditSubtaskDueAt} 
+																			defaultTime="17:00"
 																		/>
 																	</div>
 																	<div>

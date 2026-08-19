@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { useCurrentUser } from "../UserContext";
 import { PageHeader, EmptyState } from "@/components/ui";
+import { CustomerFields, EMPTY_CUSTOMER_FORM, customerFormToPayload, type CustomerFormState } from "@/components/CustomerFields";
 
 type Customer = {
     id: string;
@@ -19,72 +20,7 @@ type Customer = {
     deliveryNotes?: string | null;
 };
 
-const EMPTY_FORM = {
-    name: "", email: "", phone: "", secondaryPhone: "", company: "", address: "", gstin: "",
-    deliveryContactName: "", deliveryPhone: "", deliverySecondaryPhone: "", deliveryAddress: "", deliveryNotes: "",
-};
-
-type FormState = typeof EMPTY_FORM;
-
-// Same billing/delivery fields the onboarding form collects — the Customer
-// record is the one source of truth both read from and write back to.
-function CustomerFields({ values, onChange, idPrefix }: { values: FormState; onChange: (key: keyof FormState, value: string) => void; idPrefix: string }) {
-    return (
-        <div className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="sm:col-span-2">
-                    <label className="field-label" htmlFor={`${idPrefix}-name`}>Name</label>
-                    <input id={`${idPrefix}-name`} className="input" value={values.name} onChange={e => onChange("name", e.target.value)} required />
-                </div>
-                <div className="sm:col-span-2">
-                    <label className="field-label" htmlFor={`${idPrefix}-company`}>Company</label>
-                    <input id={`${idPrefix}-company`} className="input" value={values.company} onChange={e => onChange("company", e.target.value)} />
-                </div>
-            </div>
-
-            <div className="space-y-3">
-                <h3 className="text-sm font-medium">Billing details</h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <input className="input" type="email" placeholder="Email" value={values.email} onChange={e => onChange("email", e.target.value)} />
-                    <input className="input" placeholder="Phone" value={values.phone} onChange={e => onChange("phone", e.target.value)} />
-                    <input className="input" placeholder="Secondary phone" value={values.secondaryPhone} onChange={e => onChange("secondaryPhone", e.target.value)} />
-                    <input className="input" placeholder="GSTIN / Tax ID" value={values.gstin} onChange={e => onChange("gstin", e.target.value)} />
-                    <textarea className="input sm:col-span-2" placeholder="Billing address" value={values.address} onChange={e => onChange("address", e.target.value)} />
-                </div>
-            </div>
-
-            <div className="space-y-3">
-                <h3 className="text-sm font-medium">Delivery details</h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <input className="input" placeholder="Contact name" value={values.deliveryContactName} onChange={e => onChange("deliveryContactName", e.target.value)} />
-                    <input className="input" placeholder="Delivery phone" value={values.deliveryPhone} onChange={e => onChange("deliveryPhone", e.target.value)} />
-                    <input className="input" placeholder="Secondary phone" value={values.deliverySecondaryPhone} onChange={e => onChange("deliverySecondaryPhone", e.target.value)} />
-                    <textarea className="input sm:col-span-2" placeholder="Delivery address" value={values.deliveryAddress} onChange={e => onChange("deliveryAddress", e.target.value)} />
-                    <textarea className="input sm:col-span-2" placeholder="Delivery notes" value={values.deliveryNotes} onChange={e => onChange("deliveryNotes", e.target.value)} />
-                </div>
-            </div>
-        </div>
-    );
-}
-
-function toPayload(v: FormState) {
-    return {
-        name: v.name,
-        email: v.email || undefined,
-        phone: v.phone || undefined,
-        secondaryPhone: v.secondaryPhone || undefined,
-        company: v.company || undefined,
-        address: v.address || undefined,
-        gstin: v.gstin || undefined,
-        deliveryContactName: v.deliveryContactName || undefined,
-        deliveryPhone: v.deliveryPhone || undefined,
-        deliverySecondaryPhone: v.deliverySecondaryPhone || undefined,
-        deliveryAddress: v.deliveryAddress || undefined,
-        deliveryNotes: v.deliveryNotes || undefined,
-    };
-}
-
-function toFormState(c: Customer): FormState {
+function toFormState(c: Customer): CustomerFormState {
     return {
         name: c.name, email: c.email || "", phone: c.phone || "", secondaryPhone: c.secondaryPhone || "",
         company: c.company || "", address: c.address || "", gstin: c.gstin || "",
@@ -102,11 +38,11 @@ export default function CustomersPage() {
     const [loading, setLoading] = useState(true);
     const [showForm, setShowForm] = useState(false);
     const [search, setSearch] = useState("");
-    const [form, setForm] = useState<FormState>(EMPTY_FORM);
+    const [form, setForm] = useState<CustomerFormState>(EMPTY_CUSTOMER_FORM);
     const [creating, setCreating] = useState(false);
 
     const [editingId, setEditingId] = useState<string | null>(null);
-    const [editForm, setEditForm] = useState<FormState>(EMPTY_FORM);
+    const [editForm, setEditForm] = useState<CustomerFormState>(EMPTY_CUSTOMER_FORM);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [rowError, setRowError] = useState<{ id: string; message: string } | null>(null);
@@ -150,10 +86,10 @@ export default function CustomersPage() {
             const res = await fetch("/api/customers", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(toPayload(form))
+                body: JSON.stringify(customerFormToPayload(form))
             });
             if (res.ok) {
-                setForm(EMPTY_FORM);
+                setForm(EMPTY_CUSTOMER_FORM);
                 setShowForm(false);
                 load();
             } else {
@@ -173,7 +109,7 @@ export default function CustomersPage() {
             const res = await fetch(`/api/customers/${id}`, {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(toPayload(editForm))
+                body: JSON.stringify(customerFormToPayload(editForm))
             });
             if (res.ok) {
                 setEditingId(null);
