@@ -698,13 +698,6 @@ function TasksPageInner() {
 		if (priority === "MEDIUM") return "chip chip-info";
 		return "chip chip-plain";
 	}
-	const ITEM_STATUS_LABELS: Record<string, string> = {
-		PENDING_CLIENT_APPROVAL: "Pending Client Approval",
-		PRE_PRODUCTION: "Pre Production",
-		PRODUCTION: "Production",
-		PACKED: "Packed",
-		DESPATCHED: "Despatched",
-	};
 	function itemStatusChipClass(status: string): string {
 		if (status === "DESPATCHED") return "chip chip-ok";
 		if (status === "PACKED") return "chip chip-warn";
@@ -715,12 +708,12 @@ function TasksPageInner() {
 		const due = new Date(dueAt);
 		const dateLabel = due.toLocaleDateString();
 		// Compare calendar days, not exact 24h windows, so a due time later
-		// today still reads as "(today)" rather than "(0 days)".
+		// today still reads as "(today)" rather than "(0 days left)".
 		const startOfToday = new Date(new Date().toDateString());
 		const startOfDue = new Date(due.toDateString());
 		const days = Math.round((startOfDue.getTime() - startOfToday.getTime()) / (24 * 60 * 60 * 1000));
 		if (days === 0) return `Due ${dateLabel} (today)`;
-		if (days > 0) return `Due ${dateLabel} (${days} day${days === 1 ? "" : "s"})`;
+		if (days > 0) return `Due ${dateLabel} (${days} day${days === 1 ? "" : "s"} left)`;
 		return `Due ${dateLabel} (overdue by ${-days} day${days === -1 ? "" : "s"})`;
 	}
 
@@ -2027,6 +2020,7 @@ function TasksPageInner() {
 									</div>
 								</form>
 							) : (
+								<>
 								<details>
 									<summary className="list-none cursor-pointer select-none [&::-webkit-details-marker]:hidden">
 										<div className="flex flex-wrap items-center gap-2">
@@ -2038,15 +2032,6 @@ function TasksPageInner() {
 											{t.onboardingStatus === "PENDING" && <span className="chip chip-warn">Onboarding: Pending</span>}
 											{t.onboardingStatus === "SUBMITTED" && <span className="chip chip-ok">Onboarding: Submitted</span>}
 										</div>
-										{t.despatchItems && t.despatchItems.length > 0 && (
-											<div className="mt-1.5 flex flex-wrap items-center gap-1">
-												{t.despatchItems.map(item => (
-													<span key={item.id} className={itemStatusChipClass(item.status)}>
-														{item.name} · {ITEM_STATUS_LABELS[item.status] ?? item.status}
-													</span>
-												))}
-											</div>
-										)}
 									</summary>
 									<div className="pt-2">
 							{/* Customer / assignees / creator — plain labeled lines, no pills */}
@@ -2132,158 +2117,6 @@ function TasksPageInner() {
 											<TaskComments taskId={t.id} mentionable={[...users.map(u => ({ id: u.id, name: u.name })), ...teams.map(team => ({ id: team.id, name: team.name }))]} />
 										</div>
 									)}
-
-									{/* Items Section */}
-									<div className="mt-4 border-t border-gray-200 pt-4">
-										<div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-											<h4 className="text-sm font-medium">
-												Items
-												{t.despatchItems && t.despatchItems.length > 0 && (
-													<span className="text-xs text-muted ml-2">
-														{t.despatchItems.filter(i => i.status === "DESPATCHED").length}/{t.despatchItems.length} despatched
-													</span>
-												)}
-											</h4>
-											<button
-												type="button"
-												className="text-xs px-2 py-1 rounded border"
-												onClick={() => setAddingDespatchItemToTaskId(addingDespatchItemToTaskId === t.id ? null : t.id)}
-											>
-												{addingDespatchItemToTaskId === t.id ? "Cancel" : "Add item"}
-											</button>
-										</div>
-
-										{addingDespatchItemToTaskId === t.id && (
-											<form
-												onSubmit={(e) => { e.preventDefault(); createDespatchItem(t.id); }}
-												className="space-y-2 p-3 border border-line rounded-lg bg-wash mb-3"
-											>
-												<div className="flex flex-wrap gap-2">
-													<select className="input flex-1 min-w-[8rem] text-sm" value={newDespatchCategory} onChange={(e) => setNewDespatchCategory(e.target.value)}>
-														<option value="">Select type</option>
-														<option value="Rigid Boxes">Rigid Boxes</option>
-														<option value="Cake Boxes">Cake Boxes</option>
-														<option value="Paper Bags">Paper Bags</option>
-														<option value="Stickers">Stickers</option>
-														<option value="Cards">Cards</option>
-														<option value="Invitation">Invitation</option>
-														<option value="Paperboard Boxes">Paperboard Boxes</option>
-														<option value="Others">Others</option>
-														{dynamicCategories.map(c => (<option key={c.id} value={c.name}>{c.name}</option>))}
-													</select>
-													<input className="input flex-[2] min-w-[8rem] text-sm" placeholder="Item name" value={newDespatchName} onChange={(e) => setNewDespatchName(e.target.value)} required />
-													<input className="input flex-1 min-w-[6rem] text-sm" placeholder="Size" value={newDespatchSpecFields.size ?? ""} onChange={(e) => setNewDespatchSpecFields(v => ({ ...v, size: e.target.value }))} />
-													<div className="flex gap-1 flex-1 min-w-[8rem]">
-														<input className="input text-sm" type="number" min="0" step="any" placeholder="Qty" value={newDespatchQuantity} onChange={(e) => setNewDespatchQuantity(e.target.value)} required />
-														<input className="input text-sm" placeholder="Unit" value={newDespatchUnit} onChange={(e) => setNewDespatchUnit(e.target.value)} />
-													</div>
-												</div>
-												<ItemSpecFields
-													category={newDespatchCategory}
-													specFields={newDespatchSpecFields}
-													onFieldChange={(key, value) => setNewDespatchSpecFields(v => ({ ...v, [key]: value }))}
-													dynamicCategories={dynamicCategories}
-												/>
-												<button type="submit" className="btn btn-accent btn-sm">Add</button>
-											</form>
-										)}
-
-										{t.despatchItems && t.despatchItems.length > 0 ? (
-											<div className="space-y-2">
-												{t.despatchItems.map((item) => (
-													<div key={item.id} className="p-2.5 border border-gray-200 rounded bg-white">
-														{editingDespatchItemId === item.id ? (
-															<form
-																onSubmit={(e) => { e.preventDefault(); saveDespatchItemEdit(item.id); }}
-																className="space-y-2"
-															>
-																<div className="flex flex-wrap gap-2">
-																	<select className="input flex-1 min-w-[8rem] text-sm" value={editDespatchCategory} onChange={(e) => setEditDespatchCategory(e.target.value)}>
-																		<option value="">Select type</option>
-																		<option value="Rigid Boxes">Rigid Boxes</option>
-																		<option value="Cake Boxes">Cake Boxes</option>
-																		<option value="Paper Bags">Paper Bags</option>
-																		<option value="Stickers">Stickers</option>
-																		<option value="Cards">Cards</option>
-																		<option value="Invitation">Invitation</option>
-																		<option value="Paperboard Boxes">Paperboard Boxes</option>
-																		<option value="Others">Others</option>
-																		{dynamicCategories.map(c => (<option key={c.id} value={c.name}>{c.name}</option>))}
-																	</select>
-																	<input className="input flex-[2] min-w-[8rem] text-sm" placeholder="Item name" value={editDespatchName} onChange={(e) => setEditDespatchName(e.target.value)} required />
-																	<input className="input flex-1 min-w-[6rem] text-sm" placeholder="Size" value={editDespatchSpecFields.size ?? ""} onChange={(e) => setEditDespatchSpecFields(v => ({ ...v, size: e.target.value }))} />
-																	<div className="flex gap-1 flex-1 min-w-[8rem]">
-																		<input className="input text-sm" type="number" min="0" step="any" placeholder="Qty" value={editDespatchQuantity} onChange={(e) => setEditDespatchQuantity(e.target.value)} required />
-																		<input className="input text-sm" placeholder="Unit" value={editDespatchUnit} onChange={(e) => setEditDespatchUnit(e.target.value)} />
-																	</div>
-																</div>
-																<ItemSpecFields
-																	category={editDespatchCategory}
-																	specFields={editDespatchSpecFields}
-																	onFieldChange={(key, value) => setEditDespatchSpecFields(v => ({ ...v, [key]: value }))}
-																	dynamicCategories={dynamicCategories}
-																/>
-																<div className="flex gap-2">
-																	<button type="submit" className="btn btn-accent btn-sm">Save</button>
-																	<button type="button" className="btn btn-outline btn-sm" onClick={cancelEditDespatchItem}>Cancel</button>
-																</div>
-															</form>
-														) : (
-															<div className="flex flex-wrap items-center justify-between gap-2">
-																<div>
-																	<span className="text-sm">{item.name} — {item.quantity} {item.unit}</span>
-																	{item.specFields?.category && (
-																		<span className="chip chip-plain ml-2">{item.specFields.category}</span>
-																	)}
-																	{item.specFields && Object.keys(item.specFields).filter(k => k !== "category").length > 0 && (
-																		<details className="mt-1">
-																			<summary className="text-xs text-muted cursor-pointer">Specs</summary>
-																			<div className="text-xs text-muted mt-1 space-y-0.5">
-																				{Object.entries(item.specFields).filter(([k]) => k !== "category").map(([k, v]) => (
-																					v === "" || v === false || v === null || v === undefined ? null : (
-																						<div key={k}>{k}: {String(v)}</div>
-																					)
-																				))}
-																			</div>
-																		</details>
-																	)}
-																</div>
-																<div className="flex items-center gap-2">
-																	<select
-																		className={`input text-xs py-1 !w-auto ${itemStatusChipClass(item.status)}`}
-																		value={item.status}
-																		onChange={(e) => updateDespatchItemStatus(item.id, e.target.value as DespatchItem["status"])}
-																	>
-																		<option value="PENDING_CLIENT_APPROVAL">Pending Client Approval</option>
-																		<option value="PRE_PRODUCTION">Pre Production</option>
-																		<option value="PRODUCTION">Production</option>
-																		<option value="PACKED">Packed</option>
-																		<option value="DESPATCHED">Despatched</option>
-																	</select>
-																	<button
-																		type="button"
-																		onClick={() => startEditDespatchItem(item)}
-																		className="btn btn-outline btn-sm"
-																	>
-																		Edit
-																	</button>
-																	<button
-																		type="button"
-																		onClick={() => deleteDespatchItem(item.id)}
-																		className="text-xs px-2 py-1 rounded border text-red-600 hover:text-red-800 hover:bg-red-50"
-																	>
-																		Delete
-																	</button>
-																</div>
-															</div>
-														)}
-													</div>
-												))}
-											</div>
-										) : (
-											<p className="text-xs text-gray-500 italic">No items yet</p>
-										)}
-									</div>
 
 									{/* Subtasks Section */}
 									<div className="mt-4 border-t border-gray-200 pt-4">
@@ -2710,6 +2543,160 @@ function TasksPageInner() {
 					)}
 								</div>
 							</details>
+								{/* Items -- always visible, not gated behind expanding the task */}
+									<div className="mt-4 border-t border-gray-200 pt-4">
+										<div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+											<h4 className="text-sm font-medium">
+												Items
+												{t.despatchItems && t.despatchItems.length > 0 && (
+													<span className="text-xs text-muted ml-2">
+														{t.despatchItems.filter(i => i.status === "DESPATCHED").length}/{t.despatchItems.length} despatched
+													</span>
+												)}
+											</h4>
+											<button
+												type="button"
+												className="text-xs px-2 py-1 rounded border"
+												onClick={() => setAddingDespatchItemToTaskId(addingDespatchItemToTaskId === t.id ? null : t.id)}
+											>
+												{addingDespatchItemToTaskId === t.id ? "Cancel" : "Add item"}
+											</button>
+										</div>
+
+										{addingDespatchItemToTaskId === t.id && (
+											<form
+												onSubmit={(e) => { e.preventDefault(); createDespatchItem(t.id); }}
+												className="space-y-2 p-3 border border-line rounded-lg bg-wash mb-3"
+											>
+												<div className="flex flex-wrap gap-2">
+													<select className="input flex-1 min-w-[8rem] text-sm" value={newDespatchCategory} onChange={(e) => setNewDespatchCategory(e.target.value)}>
+														<option value="">Select type</option>
+														<option value="Rigid Boxes">Rigid Boxes</option>
+														<option value="Cake Boxes">Cake Boxes</option>
+														<option value="Paper Bags">Paper Bags</option>
+														<option value="Stickers">Stickers</option>
+														<option value="Cards">Cards</option>
+														<option value="Invitation">Invitation</option>
+														<option value="Paperboard Boxes">Paperboard Boxes</option>
+														<option value="Others">Others</option>
+														{dynamicCategories.map(c => (<option key={c.id} value={c.name}>{c.name}</option>))}
+													</select>
+													<input className="input flex-[2] min-w-[8rem] text-sm" placeholder="Item name" value={newDespatchName} onChange={(e) => setNewDespatchName(e.target.value)} required />
+													<input className="input flex-1 min-w-[6rem] text-sm" placeholder="Size" value={newDespatchSpecFields.size ?? ""} onChange={(e) => setNewDespatchSpecFields(v => ({ ...v, size: e.target.value }))} />
+													<div className="flex gap-1 flex-1 min-w-[8rem]">
+														<input className="input text-sm" type="number" min="0" step="any" placeholder="Qty" value={newDespatchQuantity} onChange={(e) => setNewDespatchQuantity(e.target.value)} required />
+														<input className="input text-sm" placeholder="Unit" value={newDespatchUnit} onChange={(e) => setNewDespatchUnit(e.target.value)} />
+													</div>
+												</div>
+												<ItemSpecFields
+													category={newDespatchCategory}
+													specFields={newDespatchSpecFields}
+													onFieldChange={(key, value) => setNewDespatchSpecFields(v => ({ ...v, [key]: value }))}
+													dynamicCategories={dynamicCategories}
+												/>
+												<button type="submit" className="btn btn-accent btn-sm">Add</button>
+											</form>
+										)}
+
+										{t.despatchItems && t.despatchItems.length > 0 ? (
+											<div className="space-y-2">
+												{t.despatchItems.map((item) => (
+													<div key={item.id} className="p-2.5 border border-gray-200 rounded bg-white">
+														{editingDespatchItemId === item.id ? (
+															<form
+																onSubmit={(e) => { e.preventDefault(); saveDespatchItemEdit(item.id); }}
+																className="space-y-2"
+															>
+																<div className="flex flex-wrap gap-2">
+																	<select className="input flex-1 min-w-[8rem] text-sm" value={editDespatchCategory} onChange={(e) => setEditDespatchCategory(e.target.value)}>
+																		<option value="">Select type</option>
+																		<option value="Rigid Boxes">Rigid Boxes</option>
+																		<option value="Cake Boxes">Cake Boxes</option>
+																		<option value="Paper Bags">Paper Bags</option>
+																		<option value="Stickers">Stickers</option>
+																		<option value="Cards">Cards</option>
+																		<option value="Invitation">Invitation</option>
+																		<option value="Paperboard Boxes">Paperboard Boxes</option>
+																		<option value="Others">Others</option>
+																		{dynamicCategories.map(c => (<option key={c.id} value={c.name}>{c.name}</option>))}
+																	</select>
+																	<input className="input flex-[2] min-w-[8rem] text-sm" placeholder="Item name" value={editDespatchName} onChange={(e) => setEditDespatchName(e.target.value)} required />
+																	<input className="input flex-1 min-w-[6rem] text-sm" placeholder="Size" value={editDespatchSpecFields.size ?? ""} onChange={(e) => setEditDespatchSpecFields(v => ({ ...v, size: e.target.value }))} />
+																	<div className="flex gap-1 flex-1 min-w-[8rem]">
+																		<input className="input text-sm" type="number" min="0" step="any" placeholder="Qty" value={editDespatchQuantity} onChange={(e) => setEditDespatchQuantity(e.target.value)} required />
+																		<input className="input text-sm" placeholder="Unit" value={editDespatchUnit} onChange={(e) => setEditDespatchUnit(e.target.value)} />
+																	</div>
+																</div>
+																<ItemSpecFields
+																	category={editDespatchCategory}
+																	specFields={editDespatchSpecFields}
+																	onFieldChange={(key, value) => setEditDespatchSpecFields(v => ({ ...v, [key]: value }))}
+																	dynamicCategories={dynamicCategories}
+																/>
+																<div className="flex gap-2">
+																	<button type="submit" className="btn btn-accent btn-sm">Save</button>
+																	<button type="button" className="btn btn-outline btn-sm" onClick={cancelEditDespatchItem}>Cancel</button>
+																</div>
+															</form>
+														) : (
+															<div className="flex flex-wrap items-center justify-between gap-2">
+																<div>
+																	<span className="text-sm">{item.name} — {item.quantity} {item.unit}</span>
+																	{item.specFields?.category && (
+																		<span className="chip chip-plain ml-2">{item.specFields.category}</span>
+																	)}
+																	{item.specFields && Object.keys(item.specFields).filter(k => k !== "category").length > 0 && (
+																		<details className="mt-1">
+																			<summary className="text-xs text-muted cursor-pointer">Specs</summary>
+																			<div className="text-xs text-muted mt-1 space-y-0.5">
+																				{Object.entries(item.specFields).filter(([k]) => k !== "category").map(([k, v]) => (
+																					v === "" || v === false || v === null || v === undefined ? null : (
+																						<div key={k}>{k}: {String(v)}</div>
+																					)
+																				))}
+																			</div>
+																		</details>
+																	)}
+																</div>
+																<div className="flex items-center gap-2">
+																	<select
+																		className={`input text-xs py-1 !w-auto ${itemStatusChipClass(item.status)}`}
+																		value={item.status}
+																		onChange={(e) => updateDespatchItemStatus(item.id, e.target.value as DespatchItem["status"])}
+																	>
+																		<option value="PENDING_CLIENT_APPROVAL">Pending Client Approval</option>
+																		<option value="PRE_PRODUCTION">Pre Production</option>
+																		<option value="PRODUCTION">Production</option>
+																		<option value="PACKED">Packed</option>
+																		<option value="DESPATCHED">Despatched</option>
+																	</select>
+																	<button
+																		type="button"
+																		onClick={() => startEditDespatchItem(item)}
+																		className="btn btn-outline btn-sm"
+																	>
+																		Edit
+																	</button>
+																	<button
+																		type="button"
+																		onClick={() => deleteDespatchItem(item.id)}
+																		className="text-xs px-2 py-1 rounded border text-red-600 hover:text-red-800 hover:bg-red-50"
+																	>
+																		Delete
+																	</button>
+																</div>
+															</div>
+														)}
+													</div>
+												))}
+											</div>
+										) : (
+											<p className="text-xs text-gray-500 italic">No items yet</p>
+										)}
+									</div>
+
+
+						</>
 						)}
 						</li>
 						);
