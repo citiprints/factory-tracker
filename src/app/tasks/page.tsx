@@ -303,6 +303,16 @@ function ItemSpecFields({
 				</div>
 			)}
 
+			{category && (
+				<textarea
+					className="input text-sm"
+					placeholder="Description / notes"
+					rows={2}
+					value={f("description")}
+					onChange={(e) => onFieldChange("description", e.target.value)}
+				/>
+			)}
+
 			{dynamicCategories.find(c => c.name === category)?.fields.map(fld => (
 				<div key={fld.id} className="text-sm">
 					<label className="block mb-1">{fld.label}{fld.required && " *"}</label>

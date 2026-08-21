@@ -46,6 +46,7 @@ model User {
 
   teamMemberships TeamMember[]
   paymentsRecorded Payment[]
+  quickTasks      QuickTask[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -450,6 +451,24 @@ model ActivityLog {
 
   @@index([entityType, entityId])
   @@index([actorId])
+}
+
+// A personal one-line to-do, separate from the full Task model -- no
+// customer, items, or payments, just something to jot down with an optional
+// due date/time. Each user only ever sees their own.
+model QuickTask {
+  id     String  @id @default(cuid())
+  text   String
+  dueAt  DateTime?
+  done   Boolean @default(false)
+
+  createdById String
+  createdBy   User   @relation(fields: [createdById], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([createdById, done])
 }
 
 // End of schema

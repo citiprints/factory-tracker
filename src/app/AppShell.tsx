@@ -43,6 +43,7 @@ const ICONS = {
   audit: "M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2M9 5a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2M9 12h6M9 16h6",
   payments: "M3 6h18v12H3zM3 10h18M7 15h2",
   backup: "M12 3v12m0 0-4-4m4 4 4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2",
+  check: "M5 12l5 5L20 7",
 };
 
 type NavItem = { href: string; label: string; icon: keyof typeof ICONS };
@@ -60,6 +61,7 @@ const ADMIN_NAV: NavSection[] = [
     title: "Work",
     items: [
       { href: "/tasks", label: "Tasks", icon: "tasks" },
+      { href: "/quick-tasks", label: "Quick Tasks", icon: "check" },
       { href: "/schedule", label: "Schedule", icon: "calendar" },
       { href: "/attendance", label: "Attendance", icon: "clock" },
     ],
@@ -93,6 +95,7 @@ const WORKER_NAV: NavSection[] = [
       { href: "/dashboard", label: "My day", icon: "dashboard" },
       { href: "/notifications", label: "Notifications", icon: "bell" },
       { href: "/tasks", label: "My tasks", icon: "tasks" },
+      { href: "/quick-tasks", label: "Quick Tasks", icon: "check" },
       { href: "/attendance", label: "Clock in / out", icon: "clock" },
       { href: "/schedule", label: "My shifts", icon: "calendar" },
       { href: "/settings", label: "Settings", icon: "fields" },
