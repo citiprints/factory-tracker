@@ -54,6 +54,16 @@ type DespatchItem = {
 	specFields?: Record<string, any> | null;
 };
 
+type ProofFile = { url: string; name: string };
+type ProofRequest = {
+	id: string;
+	status: "PENDING" | "APPROVED" | "REJECTED";
+	files: ProofFile[];
+	customerNote?: string | null;
+	createdAt: string;
+	createdBy: { id: string; name: string };
+};
+
 type OnboardingForm = {
 	id: string;
 	taskId: string;
@@ -466,6 +476,77 @@ function TasksPageInner() {
 	});
 	const [fillSameAsBilling, setFillSameAsBilling] = useState(false);
 	const [viewingOnboardingTaskId, setViewingOnboardingTaskId] = useState<string | null>(null);
+
+	// Design proof: same lazy-load + show/hide-without-refetch pattern as
+	// Onboarding form above. Latest request per task is requests[0] (server
+	// returns newest-first).
+	const [proofRequestsData, setProofRequestsData] = useState<Record<string, ProofRequest[]>>({});
+	const [proofLoadingTaskId, setProofLoadingTaskId] = useState<string | null>(null);
+	const [expandedProofs, setExpandedProofs] = useState<Set<string>>(new Set());
+	async function loadProofRequests(taskId: string) {
+		setProofLoadingTaskId(taskId);
+		try {
+			const res = await fetch(`/api/tasks/${taskId}/proof-requests`);
+			if (res.ok) {
+				const json = await res.json();
+				setProofRequestsData(prev => ({ ...prev, [taskId]: json.proofRequests ?? [] }));
+			}
+		} finally {
+			setProofLoadingTaskId(null);
+		}
+	}
+	function toggleProofs(taskId: string) {
+		if (expandedProofs.has(taskId)) {
+			setExpandedProofs(prev => {
+				const next = new Set(prev);
+				next.delete(taskId);
+				return next;
+			});
+			return;
+		}
+		setExpandedProofs(prev => new Set(prev).add(taskId));
+		if (!(taskId in proofRequestsData)) loadProofRequests(taskId);
+	}
+	const [composingProofTaskId, setComposingProofTaskId] = useState<string | null>(null);
+	const [proofFilesToUpload, setProofFilesToUpload] = useState<File[]>([]);
+	const [sendingProofTaskId, setSendingProofTaskId] = useState<string | null>(null);
+	async function submitProof(taskId: string) {
+		if (proofFilesToUpload.length === 0) return;
+		setSendingProofTaskId(taskId);
+		try {
+			const uploaded: ProofFile[] = [];
+			for (const file of proofFilesToUpload) {
+				const formData = new FormData();
+				formData.append("file", file);
+				const uploadRes = await fetch("/api/upload", { method: "POST", body: formData });
+				if (uploadRes.ok) {
+					const uploadResult = await uploadRes.json();
+					uploaded.push({ url: uploadResult.url, name: uploadResult.originalName || uploadResult.filename });
+				}
+			}
+			if (uploaded.length === 0) {
+				setError("Couldn't upload the file(s). Try again.");
+				return;
+			}
+			const res = await fetch(`/api/tasks/${taskId}/proof-requests`, {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ files: uploaded }),
+			});
+			const json = await res.json().catch(() => ({}));
+			if (!res.ok) {
+				setError(typeof json.error === "string" ? json.error : "Couldn't send the proof.");
+				return;
+			}
+			navigator.clipboard?.writeText(json.link).catch(() => {});
+			alert(`Link copied to clipboard:\n${json.link}`);
+			setComposingProofTaskId(null);
+			setProofFilesToUpload([]);
+			await loadProofRequests(taskId);
+		} finally {
+			setSendingProofTaskId(null);
+		}
+	}
 
 	// Payments: total + list per task, loaded lazily (Accounts-team gated,
 	// so unlike most sections this is never fetched until asked for).
@@ -2349,6 +2430,78 @@ function TasksPageInner() {
 											);
 										})()}
 									</div>
+
+					{/* Design Proof Section */}
+					<div className="mt-4 border-t border-gray-200 pt-4">
+						<div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+							<h4 className="text-sm font-medium">Design proof</h4>
+							<button
+								type="button"
+								className="text-xs px-2 py-1 rounded border"
+								onClick={() => toggleProofs(t.id)}
+								disabled={proofLoadingTaskId === t.id}
+							>
+								{proofLoadingTaskId === t.id ? "Loading..." : expandedProofs.has(t.id) ? "Hide status" : "Show status"}
+							</button>
+						</div>
+
+						{expandedProofs.has(t.id) && t.id in proofRequestsData && (() => {
+							const requests = proofRequestsData[t.id] ?? [];
+							const latest = requests[0];
+							return (
+								<div className="space-y-2">
+									{!latest && <p className="text-sm">No proof sent yet.</p>}
+									{latest && (
+										<div className="text-sm space-y-1">
+											<div className="flex items-center gap-2">
+												<span className={
+													latest.status === "APPROVED" ? "chip chip-ok" :
+													latest.status === "REJECTED" ? "chip chip-danger" : "chip chip-plain"
+												}>{latest.status}</span>
+												<span className="text-muted">
+													{latest.files.length} file{latest.files.length === 1 ? "" : "s"} sent {new Date(latest.createdAt).toLocaleDateString()}
+												</span>
+											</div>
+											{latest.status === "REJECTED" && latest.customerNote && (
+												<p className="text-danger">Customer feedback: {latest.customerNote}</p>
+											)}
+										</div>
+									)}
+
+									{composingProofTaskId === t.id ? (
+										<div className="space-y-2 p-3 border border-line rounded-lg bg-wash">
+											<input
+												type="file"
+												multiple
+												onChange={(e) => setProofFilesToUpload(Array.from(e.target.files || []))}
+											/>
+											<div className="flex gap-2">
+												<button
+													type="button"
+													className="btn btn-primary btn-sm"
+													onClick={() => submitProof(t.id)}
+													disabled={proofFilesToUpload.length === 0 || sendingProofTaskId === t.id}
+												>
+													{sendingProofTaskId === t.id ? "Sending..." : "Send for approval"}
+												</button>
+												<button
+													type="button"
+													className="btn btn-outline btn-sm"
+													onClick={() => { setComposingProofTaskId(null); setProofFilesToUpload([]); }}
+												>
+													Cancel
+												</button>
+											</div>
+										</div>
+									) : (
+										<button type="button" className="btn btn-outline btn-sm" onClick={() => setComposingProofTaskId(t.id)}>
+											Send new proof
+										</button>
+									)}
+								</div>
+							);
+						})()}
+					</div>
 
 					{/* Payment Section — admins + Accounts team only */}
 					{canSeePayments && (

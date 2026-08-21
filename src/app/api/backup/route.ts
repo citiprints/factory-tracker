@@ -34,7 +34,7 @@ async function collectTables() {
 		users, customers, tasks, subtasks, despatchItems, payments,
 		onboardingForms, teams, teamMembers, taskTeamAssignments, comments,
 		attachments, activityLog, categories, categoryFields, shifts,
-		attendanceLogs, locations,
+		attendanceLogs, locations, quickTasks, proofRequests, materials, stockMovements,
 	] = await Promise.all([
 		prisma.user.findMany({ select: { id: true, name: true, email: true, role: true, active: true, phone: true, createdAt: true } }),
 		prisma.customer.findMany(),
@@ -54,13 +54,17 @@ async function collectTables() {
 		prisma.shift.findMany(),
 		prisma.attendanceLog.findMany(),
 		prisma.location.findMany(),
+		prisma.quickTask.findMany(),
+		prisma.proofRequest.findMany(),
+		prisma.material.findMany(),
+		prisma.stockMovement.findMany(),
 	]);
 
 	return {
 		users, customers, tasks, subtasks, despatchItems, payments,
 		onboardingForms, teams, teamMembers, taskTeamAssignments, comments,
 		attachments, activityLog, categories, categoryFields, shifts,
-		attendanceLogs, locations,
+		attendanceLogs, locations, quickTasks, proofRequests, materials, stockMovements,
 	};
 }
 

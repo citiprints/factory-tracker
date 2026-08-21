@@ -43,11 +43,16 @@ export async function GET(request: NextRequest) {
 	}
 	
 	if (!includeQuotations) {
-		whereClause.customFields = {
-			not: {
-				contains: '"isQuotation":true'
-			}
-		};
+		// `customFields: { not: { contains: ... } }` alone drops rows where
+		// customFields is NULL entirely -- SQL's three-valued logic makes
+		// `NOT (NULL LIKE ...)` evaluate to NULL, which WHERE treats as
+		// false, silently hiding any task with no customFields set (e.g.
+		// one created directly via the API without that field). Explicitly
+		// allow NULL through instead of just excluding the quotation match.
+		whereClause.OR = [
+			{ customFields: null },
+			{ customFields: { not: { contains: '"isQuotation":true' } } },
+		];
 	}
 	
 	const tasks = await prisma.task.findMany({

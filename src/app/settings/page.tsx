@@ -440,6 +440,47 @@ function TeamsSection() {
 	);
 }
 
+function IntegrationsSection() {
+	const [status, setStatus] = useState<{ email: boolean; push: boolean; whatsapp: boolean } | null>(null);
+
+	useEffect(() => {
+		fetch("/api/integrations/status")
+			.then(r => r.ok ? r.json() : null)
+			.then(setStatus)
+			.catch(() => {});
+	}, []);
+
+	function Row({ label, configured }: { label: string; configured: boolean }) {
+		return (
+			<div className="flex items-center justify-between text-sm">
+				<span>{label}</span>
+				<span className={configured ? "chip chip-ok" : "chip chip-plain"}>
+					{configured ? "Configured" : "Not configured"}
+				</span>
+			</div>
+		);
+	}
+
+	return (
+		<section className="card card-pad space-y-3">
+			<h2 className="font-semibold mb-1">Integrations</h2>
+			<p className="text-sm text-muted mb-2">
+				Outgoing notification channels — email and push already work; WhatsApp needs a Meta
+				WhatsApp Business API phone number and access token added as environment variables.
+			</p>
+			{status ? (
+				<div className="space-y-2">
+					<Row label="Email (SendGrid)" configured={status.email} />
+					<Row label="Push notifications (Firebase)" configured={status.push} />
+					<Row label="WhatsApp" configured={status.whatsapp} />
+				</div>
+			) : (
+				<div className="skeleton h-16 w-full" />
+			)}
+		</section>
+	);
+}
+
 export default function SettingsPage() {
 	const currentUser = useCurrentUser();
 	const isAdmin = currentUser?.role === "ADMIN" || currentUser?.role === "MANAGER";
@@ -451,6 +492,7 @@ export default function SettingsPage() {
 			<AppearanceSection />
 			{isAdmin && <CategoriesSection />}
 			{isAdmin && <TeamsSection />}
+			{isAdmin && <IntegrationsSection />}
 		</div>
 	);
 }

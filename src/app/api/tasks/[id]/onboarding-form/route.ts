@@ -3,6 +3,7 @@ import { randomBytes } from "crypto";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/session";
 import { sendEmail } from "@/lib/email";
+import { sendWhatsAppMessage } from "@/lib/whatsapp";
 import { z } from "zod";
 
 const ONBOARDING_FORM_TTL_MS = 14 * 24 * 60 * 60 * 1000; // 14 days
@@ -88,6 +89,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 				html: `<p>Hi ${task.customerRef?.name ?? "there"},</p><p>Please fill in your billing and delivery details for <strong>${task.title}</strong> using the secure link below:</p><p><a href="${link}">${link}</a></p><p>This link expires in 14 days.</p>`,
 				text: `Please fill in your billing and delivery details for "${task.title}": ${link} (expires in 14 days)`,
 			});
+		}
+
+		if (task.customerRef?.phone) {
+			await sendWhatsAppMessage({
+				to: task.customerRef.phone,
+				templateName: "onboarding_link",
+				params: [task.customerRef.name ?? "there", task.title, link],
+			}).catch(() => {});
 		}
 
 		return NextResponse.json({ form, link }, { status: 201 });

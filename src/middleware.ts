@@ -18,6 +18,8 @@ export function middleware(request: NextRequest) {
     pathname.startsWith("/api/auth") ||
     pathname.startsWith("/forms/") ||
     pathname.startsWith("/api/forms/") ||
+    pathname.startsWith("/proofs/") ||
+    pathname.startsWith("/api/proofs/") ||
     pathname.includes(".");
 
   const hasSessionCookie = !!request.cookies.get("auth_session")?.value;

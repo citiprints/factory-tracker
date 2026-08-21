@@ -47,6 +47,8 @@ model User {
   teamMemberships TeamMember[]
   paymentsRecorded Payment[]
   quickTasks      QuickTask[]
+  proofRequestsCreated ProofRequest[] @relation("ProofRequestCreatedBy")
+  stockMovements  StockMovement[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -177,6 +179,7 @@ model Task {
   onboardingForms OnboardingForm[]
   teamAssignments TaskTeamAssignment[]
   payments        Payment[]
+  proofRequests   ProofRequest[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -184,6 +187,32 @@ model Task {
   @@index([status, dueAt])
   @@index([priority])
   @@index([customerId])
+}
+
+// A design proof (one or more files) sent to the customer for approval
+// before production. Scoped to the whole task, not a single item -- a task
+// with several different products approves them together as one batch.
+// No "revoke" concept like OnboardingForm: a rejected request just stays as
+// history and staff sends a fresh one; the latest by createdAt is "current".
+model ProofRequest {
+  id     String @id @default(cuid())
+  taskId String
+  task   Task   @relation(fields: [taskId], references: [id])
+
+  token  String @unique
+  status String @default("PENDING") // PENDING | APPROVED | REJECTED
+
+  files        String  // JSON array: [{ url, name }]
+  customerNote String?
+
+  createdById String
+  createdBy   User   @relation("ProofRequestCreatedBy", fields: [createdById], references: [id])
+
+  respondedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([taskId])
 }
 
 // A line item on a task's despatch list — tracks packing/dispatch/delivery
@@ -469,6 +498,39 @@ model QuickTask {
   updatedAt DateTime @updatedAt
 
   @@index([createdById, done])
+}
+
+// Raw-material stock, tracked as a manual ledger (received/used/wasted/
+// adjustment) -- not linked to specific job items yet, just a running
+// balance with a reorder threshold.
+model Material {
+  id           String   @id @default(cuid())
+  name         String
+  unit         String   // "kg", "sheets", "rolls", etc. -- free text, not an enum
+  currentStock Float    @default(0)
+  reorderPoint Float    @default(0)
+  notes        String?
+
+  movements StockMovement[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model StockMovement {
+  id         String   @id @default(cuid())
+  materialId String
+  material   Material @relation(fields: [materialId], references: [id])
+
+  delta  Float  // signed: +qty for RECEIVED/ADJUSTMENT-up, -qty for USED/WASTED
+  reason String // RECEIVED | USED | WASTED | ADJUSTMENT
+  note   String?
+
+  actorId String
+  actor   User   @relation(fields: [actorId], references: [id])
+  at      DateTime @default(now())
+
+  @@index([materialId, at])
 }
 
 // End of schema

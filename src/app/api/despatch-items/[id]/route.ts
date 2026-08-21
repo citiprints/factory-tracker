@@ -5,6 +5,7 @@ import { z } from "zod";
 import { DESPATCH_ITEM_STATUSES } from "@/lib/constants";
 import { maybeArchiveTask } from "@/lib/tasks";
 import { logActivity } from "@/lib/audit";
+import { sendWhatsAppMessage } from "@/lib/whatsapp";
 
 const UpdateDespatchItemSchema = z.object({
 	name: z.string().min(1).optional(),
@@ -51,6 +52,20 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 				after: { status: despatchItem.status },
 			});
 			await maybeArchiveTask(despatchItem.taskId);
+
+			if (despatchItem.status === "DESPATCHED") {
+				const task = await prisma.task.findUnique({
+					where: { id: despatchItem.taskId },
+					include: { customerRef: { select: { name: true, phone: true } } },
+				});
+				if (task?.customerRef?.phone) {
+					await sendWhatsAppMessage({
+						to: task.customerRef.phone,
+						templateName: "order_despatched",
+						params: [task.customerRef.name ?? "there", task.title, despatchItem.name],
+					}).catch(() => {});
+				}
+			}
 		}
 
 		return NextResponse.json({ despatchItem });

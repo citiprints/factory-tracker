@@ -44,6 +44,7 @@ const ICONS = {
   payments: "M3 6h18v12H3zM3 10h18M7 15h2",
   backup: "M12 3v12m0 0-4-4m4 4 4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2",
   check: "M5 12l5 5L20 7",
+  inventory: "M20 7l-8-4-8 4m16 0-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4",
 };
 
 type NavItem = { href: string; label: string; icon: keyof typeof ICONS };
@@ -64,6 +65,7 @@ const ADMIN_NAV: NavSection[] = [
       { href: "/quick-tasks", label: "Quick Tasks", icon: "check" },
       { href: "/schedule", label: "Schedule", icon: "calendar" },
       { href: "/attendance", label: "Attendance", icon: "clock" },
+      { href: "/inventory", label: "Inventory", icon: "inventory" },
     ],
   },
   {
@@ -98,6 +100,7 @@ const WORKER_NAV: NavSection[] = [
       { href: "/quick-tasks", label: "Quick Tasks", icon: "check" },
       { href: "/attendance", label: "Clock in / out", icon: "clock" },
       { href: "/schedule", label: "My shifts", icon: "calendar" },
+      { href: "/inventory", label: "Inventory", icon: "inventory" },
       { href: "/settings", label: "Settings", icon: "fields" },
     ],
   },
