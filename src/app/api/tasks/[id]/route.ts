@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser, isAdmin } from "@/lib/session";
 import { notifyUser } from "@/lib/notify";
+import { logActivity } from "@/lib/audit";
 import { assignTeamToTask, unassignTeamFromTask } from "@/lib/teams";
 import { canAccessPayments } from "@/lib/payments";
 import { TASK_STATUSES, TASK_PRIORITIES } from "@/lib/constants";
@@ -124,6 +125,14 @@ export async function PATCH(
 			}
 		}
 
+		// Snapshot for the audit log -- taken before the update below so
+		// "before" reflects the pre-change state even when the same query
+		// wasn't already needed for the non-admin assignee check above.
+		const previousTask = await prisma.task.findUnique({
+			where: { id },
+			select: { status: true, priority: true, title: true },
+		});
+
 		// Handle paymentStatus via customFields
 		if (validatedData.customFields?.paymentStatus) {
 			validatedData.customFields = {
@@ -185,6 +194,17 @@ export async function PATCH(
 					include: { team: { select: { id: true, name: true } } },
 				},
 			},
+		});
+
+		const statusOnlyChange = Object.keys(taskFields).length === 1 && "status" in taskFields;
+		await logActivity({
+			entityType: "task",
+			entityId: task.id,
+			action: statusOnlyChange ? "STATUS_CHANGE" : "UPDATED",
+			actorId: user.id,
+			taskId: task.id,
+			before: previousTask ?? undefined,
+			after: { status: task.status, priority: task.priority, title: task.title },
 		});
 
 		// Only the people who are genuinely new to this task get pinged —
@@ -288,6 +308,19 @@ export async function DELETE(
 			await Promise.allSettled(deletePromises);
 		}
 
+		// Logged before the transaction (not after) -- once the task row is
+		// gone there's nothing left to reference. taskId survives via
+		// ActivityLog.taskId's onDelete: SetNull, so this row isn't wiped by
+		// the transaction below the way it would with the old hard-delete.
+		await logActivity({
+			entityType: "task",
+			entityId: id,
+			action: "DELETED",
+			actorId: user.id,
+			taskId: id,
+			before: { title: task.title, status: task.status },
+		});
+
 		// Delete all related records first (due to foreign key constraints)
 		await prisma.$transaction([
 			// Notifications aren't linked by a real foreign key (linkPath is a
@@ -313,12 +346,14 @@ export async function DELETE(
 			prisma.attachment.deleteMany({
 				where: { taskId: id }
 			}),
-			// Delete activity logs
-			prisma.activityLog.deleteMany({
-				where: { taskId: id }
-			}),
 			// Delete despatch list items
 			prisma.despatchItem.deleteMany({
+				where: { taskId: id }
+			}),
+			// Delete payments -- Payment.taskId has no cascade, so a task with
+			// any recorded payment previously couldn't be deleted at all
+			// (Postgres RESTRICT violation on Payment_taskId_fkey).
+			prisma.payment.deleteMany({
 				where: { taskId: id }
 			}),
 			// Delete onboarding forms

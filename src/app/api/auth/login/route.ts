@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { cookies } from "next/headers";
+import { logActivity } from "@/lib/audit";
 
 const LoginSchema = z.object({
 	email: z.string().email(),
@@ -24,7 +25,14 @@ export async function POST(request: Request) {
 		if (!user) return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
 
 		const ok = await bcrypt.compare(password, user.password);
-		if (!ok) return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
+		if (!ok) {
+			// The email matched a real account, so there's a valid actor to log
+			// against; a bogus email never reaches this branch at all (no user
+			// found above), so that case is never logged -- there's no account
+			// to attach it to.
+			await logActivity({ entityType: "auth", entityId: user.id, action: "LOGIN_FAILED", actorId: user.id });
+			return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
+		}
 
 		// Checked after the password so a wrong-password guess on a deactivated
 		// account still just says "Invalid credentials" -- only someone who
@@ -50,6 +58,8 @@ export async function POST(request: Request) {
 			maxAge: 60 * 60 * 24 * 7,
 			secure: process.env.NODE_ENV === "production"
 		});
+
+		await logActivity({ entityType: "auth", entityId: user.id, action: "LOGIN", actorId: user.id });
 
 		return NextResponse.json({ ok: true });
 	} catch (error) {

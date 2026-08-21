@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/session";
 import bcrypt from "bcryptjs";
+import { logActivity } from "@/lib/audit";
 import { z } from "zod";
 
 const UpdateUserSchema = z.object({
@@ -39,6 +40,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 			}
 		}
 
+		const previous = await prisma.user.findUnique({ where: { id }, select: { role: true, active: true } });
+
 		const updatedUser = await prisma.user.update({
 			where: { id },
 			data: password ? { ...data, password: await bcrypt.hash(password, 12) } : data,
@@ -57,6 +60,28 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 		// device keeps working with the password nobody else knows anymore.
 		if (password) {
 			await prisma.session.deleteMany({ where: { userId: id } });
+		}
+
+		// Role/active changes are the sensitive part of this route -- logged
+		// with before/after. Password resets are logged too, but never with
+		// the password itself, before or after.
+		if (("role" in data && data.role !== previous?.role) || ("active" in data && data.active !== previous?.active)) {
+			await logActivity({
+				entityType: "user",
+				entityId: id,
+				action: "UPDATED",
+				actorId: user.id,
+				before: previous ?? undefined,
+				after: { role: updatedUser.role, active: updatedUser.active },
+			});
+		}
+		if (password) {
+			await logActivity({
+				entityType: "user",
+				entityId: id,
+				action: "PASSWORD_RESET",
+				actorId: user.id,
+			});
 		}
 
 		return NextResponse.json({ user: updatedUser });
@@ -106,6 +131,12 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
 					prisma.teamMember.deleteMany({ where: { userId: id } }),
 					prisma.user.delete({ where: { id } }),
 				]);
+				await logActivity({
+					entityType: "user",
+					entityId: id,
+					action: "DELETED_PERMANENTLY",
+					actorId: user.id,
+				});
 				return NextResponse.json({ success: true, permanent: true });
 			} catch (err: any) {
 				const blockedByHistory =
@@ -134,6 +165,12 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
 		await prisma.user.update({ where: { id }, data: { active: false } });
 		// Also kill any active sessions so a deactivated account can't keep using the app.
 		await prisma.session.deleteMany({ where: { userId: id } });
+		await logActivity({
+			entityType: "user",
+			entityId: id,
+			action: "DEACTIVATED",
+			actorId: user.id,
+		});
 		return NextResponse.json({ success: true });
 	} catch (error) {
 		return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });

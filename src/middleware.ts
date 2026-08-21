@@ -7,7 +7,7 @@ import type { NextRequest } from "next/server";
 // not expired, user still active) happens server-side via
 // getCurrentUser() in layout.tsx / route handlers — middleware never
 // touches the database.
-const PUBLIC_PATHS = ["/signin", "/signup", "/api/auth/login", "/api/auth/register"];
+const PUBLIC_PATHS = ["/signin", "/api/auth/login"];
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -28,8 +28,8 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(signinUrl);
   }
 
-  // Already signed in and hitting /signin or /signup? send them onward.
-  if ((pathname === "/signin" || pathname === "/signup") && hasSessionCookie) {
+  // Already signed in and hitting /signin? send them onward.
+  if (pathname === "/signin" && hasSessionCookie) {
     return NextResponse.redirect(new URL("/dashboard", request.url));
   }
 

@@ -1,11 +1,7 @@
 "use client";
-import { useState, Suspense } from "react";
-import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useState } from "react";
 
-function SignInForm() {
-  const searchParams = useSearchParams();
-  const justRegistered = searchParams.get("registered") === "1";
+export default function SignInPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -36,10 +32,6 @@ function SignInForm() {
         <div className="card card-pad">
           <h1 className="text-xl font-semibold tracking-tight">Sign in</h1>
           <p className="meta mt-1 mb-6">WRAPZONE · CITIPRINTS</p>
-
-          {justRegistered && (
-            <div className="alert alert-ok mb-4">Account created — sign in below.</div>
-          )}
 
           <form onSubmit={onSubmit} className="space-y-4" noValidate>
             <div>
@@ -76,20 +68,9 @@ function SignInForm() {
         </div>
 
         <p className="text-sm text-muted mt-5 text-center">
-          New here?{" "}
-          <Link href="/signup" className="text-accent font-medium hover:text-accent-strong">
-            Create an account
-          </Link>
+          Need an account? Ask an admin to add you from the Team page.
         </p>
       </div>
     </div>
-  );
-}
-
-export default function SignInPage() {
-  return (
-    <Suspense fallback={null}>
-      <SignInForm />
-    </Suspense>
   );
 }

@@ -439,11 +439,17 @@ model ActivityLog {
   actorId String
   actor   User     @relation("ActorActivities", fields: [actorId], references: [id])
 
-  // Optional direct task linkage for quicker querying
+  // Optional direct task linkage for quicker querying. SetNull (not the
+  // default Restrict) so a task's audit history survives its deletion --
+  // the whole point of an audit trail is to still show "who deleted this
+  // and when" after the task itself is gone.
   taskId  String?
-  task    Task?    @relation("TaskActivities", fields: [taskId], references: [id])
+  task    Task?    @relation("TaskActivities", fields: [taskId], references: [id], onDelete: SetNull)
 
   at DateTime @default(now())
+
+  @@index([entityType, entityId])
+  @@index([actorId])
 }
 
 // End of schema

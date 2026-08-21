@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser, isAdmin } from "@/lib/session";
 import bcrypt from "bcryptjs";
+import { logActivity } from "@/lib/audit";
 import { z } from "zod";
 
 export async function GET(request: NextRequest) {
@@ -71,6 +72,14 @@ export async function POST(request: NextRequest) {
 				role: data.role ?? "WORKER",
 			},
 			select: { id: true, name: true, email: true, role: true, active: true, createdAt: true },
+		});
+
+		await logActivity({
+			entityType: "user",
+			entityId: created.id,
+			action: "CREATED",
+			actorId: user.id,
+			after: { name: created.name, email: created.email, role: created.role },
 		});
 
 		return NextResponse.json({ user: created }, { status: 201 });

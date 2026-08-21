@@ -4,6 +4,7 @@ import { getCurrentUser } from "@/lib/session";
 import { canAccessPayments } from "@/lib/payments";
 import { PAYMENT_MODES } from "@/lib/constants";
 import { maybeArchiveTask } from "@/lib/tasks";
+import { logActivity } from "@/lib/audit";
 import { z } from "zod";
 
 const CreatePaymentSchema = z.object({
@@ -56,6 +57,15 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 				recordedById: user.id,
 			},
 			include: { recordedBy: { select: { id: true, name: true } } },
+		});
+
+		await logActivity({
+			entityType: "payment",
+			entityId: payment.id,
+			action: "RECORDED",
+			actorId: user.id,
+			taskId: id,
+			after: { amount: payment.amount, mode: payment.mode, receivedAt: payment.receivedAt },
 		});
 
 		await maybeArchiveTask(id);

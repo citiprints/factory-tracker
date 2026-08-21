@@ -4,6 +4,7 @@ import { getCurrentUser } from "@/lib/session";
 import { canAccessPayments } from "@/lib/payments";
 import { PAYMENT_MODES } from "@/lib/constants";
 import { maybeArchiveTask } from "@/lib/tasks";
+import { logActivity } from "@/lib/audit";
 import { z } from "zod";
 
 const UpdatePaymentSchema = z.object({
@@ -25,6 +26,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 		const json = await request.json();
 		const data = UpdatePaymentSchema.parse(json);
 
+		const previous = await prisma.payment.findUnique({ where: { id }, select: { amount: true, mode: true } });
+
 		const payment = await prisma.payment.update({
 			where: { id },
 			data: {
@@ -34,6 +37,16 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 				...("notes" in data ? { notes: data.notes || null } : {}),
 			},
 			include: { recordedBy: { select: { id: true, name: true } } },
+		});
+
+		await logActivity({
+			entityType: "payment",
+			entityId: payment.id,
+			action: "UPDATED",
+			actorId: user.id,
+			taskId: payment.taskId,
+			before: previous ?? undefined,
+			after: { amount: payment.amount, mode: payment.mode },
 		});
 
 		await maybeArchiveTask(payment.taskId);
@@ -56,6 +69,14 @@ export async function DELETE(_: Request, { params }: { params: Promise<{ id: str
 
 	const { id } = await params;
 	const payment = await prisma.payment.delete({ where: { id } });
+	await logActivity({
+		entityType: "payment",
+		entityId: payment.id,
+		action: "DELETED",
+		actorId: user.id,
+		taskId: payment.taskId,
+		before: { amount: payment.amount, mode: payment.mode },
+	});
 	await maybeArchiveTask(payment.taskId);
 	return NextResponse.json({ ok: true });
 }

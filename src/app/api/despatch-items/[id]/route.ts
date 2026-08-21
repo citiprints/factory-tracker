@@ -4,6 +4,7 @@ import { getCurrentUser } from "@/lib/session";
 import { z } from "zod";
 import { DESPATCH_ITEM_STATUSES } from "@/lib/constants";
 import { maybeArchiveTask } from "@/lib/tasks";
+import { logActivity } from "@/lib/audit";
 
 const UpdateDespatchItemSchema = z.object({
 	name: z.string().min(1).optional(),
@@ -23,6 +24,10 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 		const data = UpdateDespatchItemSchema.parse(json);
 		const { id } = await params;
 
+		const previousStatus = "status" in data
+			? (await prisma.despatchItem.findUnique({ where: { id }, select: { status: true } }))?.status
+			: undefined;
+
 		const despatchItem = await prisma.despatchItem.update({
 			where: { id },
 			data: {
@@ -36,6 +41,15 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 		});
 
 		if ("status" in data) {
+			await logActivity({
+				entityType: "despatch_item",
+				entityId: despatchItem.id,
+				action: "STATUS_CHANGE",
+				actorId: user.id,
+				taskId: despatchItem.taskId,
+				before: { status: previousStatus },
+				after: { status: despatchItem.status },
+			});
 			await maybeArchiveTask(despatchItem.taskId);
 		}
 

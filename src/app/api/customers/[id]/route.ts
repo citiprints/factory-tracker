@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser, isAdmin } from "@/lib/session";
+import { logActivity } from "@/lib/audit";
 import { z } from "zod";
 
 const emptyToUndef = (v: unknown) =>
@@ -29,7 +30,16 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
         const json = await request.json();
         const data = UpdateCustomerSchema.parse(json);
         const { id } = await params;
+        const previous = await prisma.customer.findUnique({ where: { id } });
         const customer = await prisma.customer.update({ where: { id }, data });
+        await logActivity({
+            entityType: "customer",
+            entityId: id,
+            action: "UPDATED",
+            actorId: user.id,
+            before: previous ?? undefined,
+            after: customer,
+        });
         return NextResponse.json({ customer });
     } catch (error) {
         if (error instanceof z.ZodError) return NextResponse.json({ error: error.flatten() }, { status: 400 });
@@ -43,7 +53,14 @@ export async function DELETE(_: Request, { params }: { params: Promise<{ id: str
     if (!isAdmin(user)) return NextResponse.json({ error: "Only admins/managers can delete customers." }, { status: 403 });
     const { id } = await params;
     try {
-        await prisma.customer.delete({ where: { id } });
+        const customer = await prisma.customer.delete({ where: { id } });
+        await logActivity({
+            entityType: "customer",
+            entityId: id,
+            action: "DELETED",
+            actorId: user.id,
+            before: { name: customer.name },
+        });
         return NextResponse.json({ ok: true });
     } catch (error) {
         // Fails if the customer still has tasks referencing it (FK constraint).

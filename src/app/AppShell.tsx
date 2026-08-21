@@ -40,6 +40,8 @@ const ICONS = {
   logout: "M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9",
   bell: "M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0",
   usage: "M3 3v18h18M8 17V10M13 17V6M18 17v-4",
+  audit: "M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2M9 5a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2M9 12h6M9 16h6",
+  payments: "M3 6h18v12H3zM3 10h18M7 15h2",
 };
 
 type NavItem = { href: string; label: string; icon: keyof typeof ICONS };
@@ -66,6 +68,7 @@ const ADMIN_NAV: NavSection[] = [
     items: [
       { href: "/quotations", label: "Quotations", icon: "quote" },
       { href: "/customers", label: "Customers", icon: "people" },
+      { href: "/payments", label: "Payments", icon: "payments" },
     ],
   },
   {
@@ -76,6 +79,7 @@ const ADMIN_NAV: NavSection[] = [
       { href: "/files", label: "Files", icon: "files" },
       { href: "/archive", label: "Archive", icon: "archive" },
       { href: "/usage", label: "Usage", icon: "usage" },
+      { href: "/audit-log", label: "Audit Log", icon: "audit" },
     ],
   },
 ];

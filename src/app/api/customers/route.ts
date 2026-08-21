@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/session";
+import { logActivity } from "@/lib/audit";
 import { z } from "zod";
 
 // Empty strings from forms are treated as "not provided".
@@ -51,6 +52,13 @@ export async function POST(request: Request) {
         const json = await request.json();
         const data = CreateCustomerSchema.parse(json);
         const customer = await prisma.customer.create({ data });
+        await logActivity({
+            entityType: "customer",
+            entityId: customer.id,
+            action: "CREATED",
+            actorId: user.id,
+            after: { name: customer.name, email: customer.email, phone: customer.phone },
+        });
         return NextResponse.json({ customer }, { status: 201 });
     } catch (error: any) {
         if (error instanceof z.ZodError) return NextResponse.json({ error: error.flatten() }, { status: 400 });

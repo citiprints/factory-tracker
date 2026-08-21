@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/session";
 import { notifyUser } from "@/lib/notify";
+import { logActivity } from "@/lib/audit";
 import { assignTeamToTask } from "@/lib/teams";
 import { canAccessPayments } from "@/lib/payments";
 import { TASK_STATUSES, TASK_PRIORITIES } from "@/lib/constants";
@@ -154,6 +155,15 @@ export async function POST(request: Request) {
 				customFields: data.customFields ? JSON.stringify(data.customFields) : undefined,
 				createdById: user.id
 			}
+		});
+
+		await logActivity({
+			entityType: "task",
+			entityId: task.id,
+			action: "CREATED",
+			actorId: user.id,
+			taskId: task.id,
+			after: { title: task.title, status: task.status, priority: task.priority, customerId: task.customerId },
 		});
 
 		// Create assignments for everyone selected (assigneeIds takes priority;

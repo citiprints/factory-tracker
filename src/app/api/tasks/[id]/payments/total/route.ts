@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/session";
 import { canAccessPayments } from "@/lib/payments";
 import { maybeArchiveTask } from "@/lib/tasks";
+import { logActivity } from "@/lib/audit";
 import { z } from "zod";
 
 const UpdateTotalSchema = z.object({
@@ -24,10 +25,22 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 		const json = await request.json();
 		const { totalAmount } = UpdateTotalSchema.parse(json);
 
+		const previous = await prisma.task.findUnique({ where: { id }, select: { totalAmount: true } });
+
 		const task = await prisma.task.update({
 			where: { id },
 			data: { totalAmount },
 			select: { id: true, totalAmount: true },
+		});
+
+		await logActivity({
+			entityType: "task",
+			entityId: id,
+			action: "TOTAL_AMOUNT_SET",
+			actorId: user.id,
+			taskId: id,
+			before: previous ?? undefined,
+			after: { totalAmount: task.totalAmount },
 		});
 
 		await maybeArchiveTask(id);
