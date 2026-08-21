@@ -490,15 +490,50 @@ function TasksPageInner() {
 	const [anyDatePickerOpen, setAnyDatePickerOpen] = useState(false);
 	const countdownRef = useRef(AUTO_REFRESH_SECONDS);
 	const displayRef = useRef<HTMLSpanElement>(null);
+	// Guards the deep-link effect below from re-firing (and re-toggling the
+	// payments panel shut) on every background auto-refresh once it's
+	// already handled a given ?open=&showPayments= combination.
+	const handledDeepLinkRef = useRef<string | null>(null);
 
 	// Deep-link support: /tasks?open=<taskId> (used by Dashboard's
 	// "Upcoming Deadlines" links) opens that task's detail view once
-	// tasks have loaded.
+	// tasks have loaded. /tasks?open=<taskId>&showPayments=1 (used by the
+	// Payments page) instead expands that task's card inline and reveals
+	// its Payment section, rather than the generic View modal -- someone
+	// clicking through from Payments wants the payment breakdown, not a
+	// read-only summary of the whole task.
 	useEffect(() => {
 		const openId = searchParams.get("open");
-		if (openId && tasks.some((t) => t.id === openId)) {
+		if (!openId || !tasks.some((t) => t.id === openId)) return;
+		const showPayments = searchParams.get("showPayments") === "1";
+		const dedupeKey = `${openId}:${showPayments}`;
+		if (handledDeepLinkRef.current === dedupeKey) return;
+
+		if (!showPayments) {
+			handledDeepLinkRef.current = dedupeKey;
 			setViewingId(openId);
+			return;
 		}
+
+		// The <details> for this task's card may not be in the DOM yet on the
+		// very render where `tasks` first includes it (the list can still be
+		// mid-commit, e.g. behind a loading-skeleton swap) -- poll briefly
+		// instead of giving up on the first missed lookup, which used to mark
+		// the deep link "handled" even when nothing actually happened.
+		let attempts = 0;
+		const tryExpand = () => {
+			const details = document.getElementById(`task-details-${openId}`) as HTMLDetailsElement | null;
+			if (details) {
+				handledDeepLinkRef.current = dedupeKey;
+				details.open = true;
+				details.scrollIntoView({ behavior: "smooth", block: "start" });
+				togglePayments(openId);
+				return;
+			}
+			attempts += 1;
+			if (attempts < 20) setTimeout(tryExpand, 100);
+		};
+		tryExpand();
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [searchParams, tasks.length]);
 
@@ -1922,7 +1957,7 @@ function TasksPageInner() {
 								</form>
 							) : (
 								<>
-								<details>
+								<details id={`task-details-${t.id}`}>
 									<summary className="list-none cursor-pointer select-none [&::-webkit-details-marker]:hidden">
 										<div className="flex flex-wrap items-center gap-2">
 											<span className="text-[10px] w-5 h-5 inline-flex items-center justify-center rounded-full bg-black text-white shrink-0">{index + 1}</span>

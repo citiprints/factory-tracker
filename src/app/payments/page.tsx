@@ -177,7 +177,7 @@ export default function PaymentsPage() {
 								<li key={t.id} className="card p-4">
 									<div className="flex flex-wrap items-start justify-between gap-3">
 										<div className="min-w-0">
-											<a href={`/tasks?open=${t.id}`} className="font-medium hover:underline">{t.title}</a>
+											<a href={`/tasks?open=${t.id}&showPayments=1`} className="font-medium hover:underline">{t.title}</a>
 											<div className="meta mt-0.5">
 												{t.customer?.name ?? "No customer"}
 												{t.dueAt && ` · Due ${new Date(t.dueAt).toLocaleDateString()}`}

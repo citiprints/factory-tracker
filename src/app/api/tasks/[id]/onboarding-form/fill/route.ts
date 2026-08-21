@@ -69,7 +69,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 			});
 		}
 
-		await applyOnboardingSubmission(id, data);
+		await applyOnboardingSubmission(id, data, user.id);
 
 		return NextResponse.json({ form });
 	} catch (error) {
