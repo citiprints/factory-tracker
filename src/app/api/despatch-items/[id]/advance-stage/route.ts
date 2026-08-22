@@ -3,32 +3,32 @@ import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/session";
 import { logActivity } from "@/lib/audit";
 import { maybeArchiveTask } from "@/lib/tasks";
+import { advanceCurrentStage } from "@/lib/productionRouting";
 
-// Forward-only: completes the first not-yet-completed stage for this item,
-// in order. No skipping ahead or reopening a completed stage.
+// Completes an item's current stage. A stage with exactly one outgoing
+// edge auto-advances immediately (indistinguishable from the old linear
+// forward-only flow); a branch point (2+ outgoing edges) instead returns
+// the options for the client to offer a choice via choose-branch.
 export async function POST(_: Request, { params }: { params: Promise<{ id: string }> }) {
 	const user = await getCurrentUser();
 	if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
 	const { id } = await params;
 
-	const stages = await prisma.itemStageProgress.findMany({
-		where: { despatchItemId: id },
-		orderBy: { stageIndex: "asc" },
+	const completedStage = await prisma.itemStageProgress.findFirst({
+		where: { despatchItemId: id, completedAt: null },
+		orderBy: { order: "desc" },
 	});
-	const next = stages.find((s) => !s.completedAt);
-	if (!next) {
+	if (!completedStage) {
 		return NextResponse.json({ error: "All stages for this item are already complete." }, { status: 409 });
 	}
 
-	const now = new Date();
-	const updated = await prisma.itemStageProgress.update({
-		where: { id: next.id },
-		data: {
-			startedAt: next.startedAt ?? now,
-			completedAt: now,
-		},
-	});
+	let result;
+	try {
+		result = await advanceCurrentStage(id);
+	} catch (error: any) {
+		return NextResponse.json({ error: error.message ?? "Internal Server Error" }, { status: 409 });
+	}
 
 	const despatchItem = await prisma.despatchItem.findUnique({ where: { id } });
 
@@ -38,10 +38,14 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
 		action: "STAGE_ADVANCED",
 		actorId: user.id,
 		taskId: despatchItem?.taskId,
-		after: { stageName: updated.stageName },
+		after: { stageName: completedStage.stageName },
 	});
 
-	const isLastStage = next.stageIndex === stages.length - 1;
+	if (result.kind === "needsBranchChoice") {
+		return NextResponse.json({ needsBranchChoice: true, options: result.options, stage: completedStage });
+	}
+
+	const isLastStage = result.isLastStage;
 	let autoAdvanced = false;
 	if (isLastStage && despatchItem && despatchItem.status !== "PACKED" && despatchItem.status !== "DESPATCHED") {
 		// Same assembly gate as the PATCH route: a parent with incomplete
@@ -69,5 +73,5 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
 		}
 	}
 
-	return NextResponse.json({ stage: updated, isLastStage, autoAdvanced });
+	return NextResponse.json({ stage: completedStage, isLastStage, autoAdvanced });
 }

@@ -6,7 +6,7 @@ import { DESPATCH_ITEM_STATUSES } from "@/lib/constants";
 import { maybeArchiveTask } from "@/lib/tasks";
 import { logActivity } from "@/lib/audit";
 import { sendWhatsAppMessage } from "@/lib/whatsapp";
-import { instantiateStages, collectComponentIdsDeep } from "@/lib/productionRouting";
+import { startRoute, collectComponentIdsDeep } from "@/lib/productionRouting";
 
 const UpdateDespatchItemSchema = z.object({
 	name: z.string().min(1).optional(),
@@ -88,8 +88,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 					if (category) {
 						const templates = await prisma.categoryStageTemplate.findMany({ where: { category } });
 						if (templates.length === 1) {
-							const stages: string[] = JSON.parse(templates[0].stages);
-							await instantiateStages(despatchItem.id, stages);
+							await startRoute(despatchItem.id, templates[0].id);
 						}
 					}
 				}

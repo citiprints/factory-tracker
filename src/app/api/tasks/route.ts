@@ -77,7 +77,7 @@ export async function GET(request: NextRequest) {
 			},
 			despatchItems: {
 				orderBy: { order: "asc" },
-				include: { stageProgress: { orderBy: { stageIndex: "asc" } } },
+				include: { stageProgress: { orderBy: { order: "asc" } } },
 			},
 			// Lightweight only — just enough for a quick status badge on the
 			// list without a per-task fetch. Full details still come from the

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/session";
-import { instantiateStages } from "@/lib/productionRouting";
+import { startRoute } from "@/lib/productionRouting";
 import { logActivity } from "@/lib/audit";
 import { z } from "zod";
 
@@ -39,8 +39,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 			return NextResponse.json({ error: "That route doesn't belong to this item's category." }, { status: 400 });
 		}
 
-		const stages: string[] = JSON.parse(template.stages);
-		await instantiateStages(id, stages);
+		await startRoute(id, templateId);
 
 		await logActivity({
 			entityType: "despatch_item",
@@ -48,10 +47,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 			action: "ROUTE_CHOSEN",
 			actorId: user.id,
 			taskId: despatchItem.taskId,
-			after: { templateName: template.name, stages },
+			after: { templateName: template.name },
 		});
 
-		const stageProgress = await prisma.itemStageProgress.findMany({ where: { despatchItemId: id }, orderBy: { stageIndex: "asc" } });
+		const stageProgress = await prisma.itemStageProgress.findMany({ where: { despatchItemId: id }, orderBy: { order: "asc" } });
 		return NextResponse.json({ stageProgress });
 	} catch (error) {
 		if (error instanceof z.ZodError) {

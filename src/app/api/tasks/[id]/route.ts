@@ -68,7 +68,7 @@ export async function GET(
 				// onboarding badge.
 				despatchItems: {
 					orderBy: { order: "asc" },
-					include: { stageProgress: { orderBy: { stageIndex: "asc" } } },
+					include: { stageProgress: { orderBy: { order: "asc" } } },
 				},
 				onboardingForms: {
 					where: { status: { not: "REVOKED" } },

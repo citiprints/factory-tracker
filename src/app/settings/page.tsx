@@ -3,6 +3,21 @@ import { useEffect, useState } from "react";
 import { useCurrentUser } from "../UserContext";
 import { PageHeader, EmptyState } from "@/components/ui";
 import { BUILT_IN_ITEM_CATEGORIES } from "@/lib/constants";
+import ReactFlow, {
+	Background,
+	Controls,
+	Handle,
+	Position,
+	ReactFlowProvider,
+	applyNodeChanges,
+	applyEdgeChanges,
+	type Node,
+	type Edge,
+	type Connection,
+	type NodeChange,
+	type EdgeChange,
+} from "reactflow";
+import "reactflow/dist/style.css";
 
 type CategoryField = {
 	id: string;
@@ -262,15 +277,159 @@ function CategoriesSection() {
 	);
 }
 
-type StageTemplate = { id: string; category: string; name: string; stages: string[] };
+type DraftNode = { id: string; name: string; posX: number; posY: number; isStart: boolean };
+type DraftEdge = { id: string; fromNodeId: string; toNodeId: string; label: string | null };
+type RouteDraft = { name: string; nodes: DraftNode[]; edges: DraftEdge[] };
+type StageTemplate = { id: string; category: string; name: string; nodes: DraftNode[]; edges: DraftEdge[] };
+
+function newNodeId() {
+	return typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `n-${Date.now()}-${Math.random()}`;
+}
+
+function blankDraft(): RouteDraft {
+	const startId = newNodeId();
+	return { name: "", nodes: [{ id: startId, name: "Stage 1", posX: 40, posY: 80, isStart: true }], edges: [] };
+}
+
+// A route must be a DAG with exactly one start node -- mirrors
+// src/lib/productionRouting.ts's assertIsDag server-side check, duplicated
+// here (small, pure, no Prisma) so the builder can give instant feedback
+// before round-tripping to the server.
+function validateGraph(nodes: DraftNode[], edges: DraftEdge[]): string | null {
+	const startNodes = nodes.filter(n => n.isStart);
+	if (startNodes.length !== 1) return `A route needs exactly one start stage (found ${startNodes.length}).`;
+
+	const outgoing = new Map<string, string[]>();
+	for (const e of edges) {
+		if (!outgoing.has(e.fromNodeId)) outgoing.set(e.fromNodeId, []);
+		outgoing.get(e.fromNodeId)!.push(e.toNodeId);
+	}
+	const WHITE = 0, GRAY = 1, BLACK = 2;
+	const color = new Map<string, number>(nodes.map(n => [n.id, WHITE]));
+	let cycle = false;
+	function visit(id: string) {
+		color.set(id, GRAY);
+		for (const next of outgoing.get(id) ?? []) {
+			const c = color.get(next);
+			if (c === GRAY) { cycle = true; return; }
+			if (c === WHITE) visit(next);
+		}
+		color.set(id, BLACK);
+	}
+	for (const n of nodes) {
+		if (color.get(n.id) === WHITE) visit(n.id);
+	}
+	if (cycle) return "Routes can't loop back on themselves -- every path must lead forward to an end.";
+	return null;
+}
+
+function StageFlowNode({ id, data }: any) {
+	return (
+		<div className={`stage-flow-node${data.isStart ? " stage-flow-node-start" : ""}`}>
+			<Handle type="target" position={Position.Left} />
+			<button
+				type="button"
+				title="Set as start stage"
+				onClick={() => data.onToggleStart(id)}
+				className="stage-flow-node-star"
+			>
+				★
+			</button>
+			<input
+				className="stage-flow-node-input"
+				value={data.name}
+				onChange={(e) => data.onRename(id, e.target.value)}
+			/>
+			<button type="button" title="Delete stage" onClick={() => data.onDelete(id)} className="stage-flow-node-delete">
+				×
+			</button>
+			<Handle type="source" position={Position.Right} />
+		</div>
+	);
+}
+
+const flowNodeTypes = { stage: StageFlowNode };
+
+function RouteFlowEditor({ draft, onChange }: { draft: RouteDraft; onChange: (d: RouteDraft) => void }) {
+	function onRename(id: string, name: string) {
+		onChange({ ...draft, nodes: draft.nodes.map(n => (n.id === id ? { ...n, name } : n)) });
+	}
+	function onToggleStart(id: string) {
+		onChange({ ...draft, nodes: draft.nodes.map(n => ({ ...n, isStart: n.id === id })) });
+	}
+	function onDelete(id: string) {
+		onChange({
+			name: draft.name,
+			nodes: draft.nodes.filter(n => n.id !== id),
+			edges: draft.edges.filter(e => e.fromNodeId !== id && e.toNodeId !== id),
+		});
+	}
+
+	const rfNodes: Node[] = draft.nodes.map(n => ({
+		id: n.id,
+		type: "stage",
+		position: { x: n.posX, y: n.posY },
+		data: { name: n.name, isStart: n.isStart, onRename, onToggleStart, onDelete },
+	}));
+	const rfEdges: Edge[] = draft.edges.map(e => ({ id: e.id, source: e.fromNodeId, target: e.toNodeId, label: e.label ?? undefined }));
+
+	function onNodesChange(changes: NodeChange[]) {
+		const updated = applyNodeChanges(changes, rfNodes);
+		onChange({
+			...draft,
+			nodes: updated.map(n => {
+				const orig = draft.nodes.find(dn => dn.id === n.id);
+				return { id: n.id, name: orig?.name ?? "", posX: n.position.x, posY: n.position.y, isStart: orig?.isStart ?? false };
+			}),
+		});
+	}
+	function onEdgesChange(changes: EdgeChange[]) {
+		const updated = applyEdgeChanges(changes, rfEdges);
+		onChange({ ...draft, edges: updated.map(e => ({ id: e.id, fromNodeId: e.source, toNodeId: e.target, label: (e.label as string) ?? null })) });
+	}
+	function onConnect(connection: Connection) {
+		if (!connection.source || !connection.target || connection.source === connection.target) return;
+		const label = window.prompt("Label this branch (optional):", "");
+		onChange({ ...draft, edges: [...draft.edges, { id: newNodeId(), fromNodeId: connection.source, toNodeId: connection.target, label: label || null }] });
+	}
+	function addNode() {
+		const maxX = draft.nodes.reduce((m, n) => Math.max(m, n.posX), 0);
+		onChange({ ...draft, nodes: [...draft.nodes, { id: newNodeId(), name: "New stage", posX: maxX + 180, posY: 80, isStart: draft.nodes.length === 0 }] });
+	}
+
+	return (
+		<div>
+			<div style={{ height: 300 }} className="border border-line rounded-lg overflow-hidden">
+				<ReactFlowProvider>
+					<ReactFlow
+						nodes={rfNodes}
+						edges={rfEdges}
+						nodeTypes={flowNodeTypes}
+						onNodesChange={onNodesChange}
+						onEdgesChange={onEdgesChange}
+						onConnect={onConnect}
+						fitView
+						proOptions={{ hideAttribution: true }}
+					>
+						<Background gap={16} />
+						<Controls showInteractive={false} />
+					</ReactFlow>
+				</ReactFlowProvider>
+			</div>
+			<button type="button" className="btn btn-outline btn-sm mt-2" onClick={addNode}>
+				+ Add stage
+			</button>
+		</div>
+	);
+}
 
 function ProductionStagesSection() {
 	const [customCategories, setCustomCategories] = useState<string[]>([]);
 	const [templates, setTemplates] = useState<StageTemplate[]>([]);
 	const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
-	// Local edit buffers, keyed by template id (or "new" for an unsaved one
-	// being created for a category).
-	const [drafts, setDrafts] = useState<Record<string, { name: string; stages: string[] }>>({});
+	// Local edit buffers, keyed by template id (or "new-<category>" for an
+	// unsaved one being created).
+	const [drafts, setDrafts] = useState<Record<string, RouteDraft>>({});
 	const [saving, setSaving] = useState<string | null>(null);
 	const [error, setError] = useState<string | null>(null);
 
@@ -294,42 +453,48 @@ function ProductionStagesSection() {
 		return templates.filter(t => t.category === category);
 	}
 
-	function draftFor(key: string, fallback: { name: string; stages: string[] }) {
+	function draftFor(key: string, fallback: RouteDraft) {
 		return drafts[key] ?? fallback;
 	}
 
-	function updateDraft(key: string, fallback: { name: string; stages: string[] }, patch: Partial<{ name: string; stages: string[] }>) {
-		setDrafts(prev => ({ ...prev, [key]: { ...draftFor(key, fallback), ...patch } }));
+	function setDraft(key: string, draft: RouteDraft) {
+		setDrafts(prev => ({ ...prev, [key]: draft }));
 	}
 
 	function startNewTemplate(category: string) {
-		setDrafts(prev => ({ ...prev, [`new-${category}`]: { name: "", stages: [""] } }));
+		setDrafts(prev => ({ ...prev, [`new-${category}`]: blankDraft() }));
 	}
 
 	async function saveTemplate(category: string, existing: StageTemplate | null, key: string) {
-		const draft = draftFor(key, existing ? { name: existing.name, stages: existing.stages } : { name: "", stages: [""] });
-		const stages = draft.stages.map(s => s.trim()).filter(Boolean);
-		if (!draft.name.trim() || stages.length === 0) {
-			setError("A route needs a name and at least one stage.");
+		const draft = draftFor(key, existing ? { name: existing.name, nodes: existing.nodes, edges: existing.edges } : blankDraft());
+		const name = draft.name.trim();
+		if (!name) {
+			setError("A route needs a name.");
+			return;
+		}
+		const validationError = validateGraph(draft.nodes, draft.edges);
+		if (validationError) {
+			setError(validationError);
 			return;
 		}
 		setSaving(key);
 		setError(null);
 		try {
+			const body = { category, name, nodes: draft.nodes, edges: draft.edges };
 			const res = existing
 				? await fetch(`/api/category-stages/${existing.id}`, {
 					method: "PATCH",
 					headers: { "Content-Type": "application/json" },
-					body: JSON.stringify({ name: draft.name.trim(), stages }),
+					body: JSON.stringify(body),
 				})
 				: await fetch("/api/category-stages", {
 					method: "POST",
 					headers: { "Content-Type": "application/json" },
-					body: JSON.stringify({ category, name: draft.name.trim(), stages }),
+					body: JSON.stringify(body),
 				});
 			if (!res.ok) {
 				const json = await res.json().catch(() => ({}));
-				setError(json.error || "Couldn't save this route.");
+				setError(typeof json.error === "string" ? json.error : "Couldn't save this route.");
 				return;
 			}
 			setDrafts(prev => { const next = { ...prev }; delete next[key]; return next; });
@@ -349,11 +514,13 @@ function ProductionStagesSection() {
 		<section className="card card-pad">
 			<h2 className="font-semibold mb-1">Production stages</h2>
 			<p className="text-sm text-muted mb-4">
-				Give a category one or more named routes through production (e.g. Rigid Boxes could have a
-				"Standard" route and a "Laminated" route with an extra step). Items in that category show a
-				step-by-step checklist instead of a plain status dropdown once they reach Pre Production —
-				if a category has more than one route, whoever moves the item picks which one applies. A
-				category with no routes here keeps the plain dropdown.
+				Give a category one or more named routes through production, each built as a flowchart —
+				drag stages around, drag from a stage's right edge to another stage's left edge to connect
+				them, and mark one stage as the ★ start. A route can branch (e.g. after "Printing", go to
+				either "Lamination" or straight to "Packing") — whoever's advancing an item picks a branch
+				when they reach it. Items in a category with routing configured show this flowchart instead
+				of a plain status dropdown once they reach Pre Production; a category with no routes here
+				keeps the plain dropdown.
 			</p>
 
 			{error && <div className="alert alert-danger mb-4">{error}</div>}
@@ -384,50 +551,22 @@ function ProductionStagesSection() {
 								<div className="border-t border-line p-3 space-y-3">
 									{categoryTemplates.map(t => {
 										const key = t.id;
-										const draft = draftFor(key, { name: t.name, stages: t.stages });
+										const draft = draftFor(key, { name: t.name, nodes: t.nodes, edges: t.edges });
 										return (
 											<div key={key} className="border border-line rounded-lg p-3 space-y-2 bg-wash">
 												<div className="flex items-center gap-2">
 													<input
 														className="input font-medium"
 														value={draft.name}
-														onChange={(e) => updateDraft(key, { name: t.name, stages: t.stages }, { name: e.target.value })}
+														onChange={(e) => setDraft(key, { ...draft, name: e.target.value })}
 														placeholder="Route name, e.g. Standard"
 													/>
 													<button type="button" onClick={() => deleteTemplate(t.id)} className="text-danger text-sm shrink-0">
 														Delete
 													</button>
 												</div>
-												{draft.stages.map((stage, i) => (
-													<div key={i} className="flex items-center gap-2">
-														<span className="text-xs text-muted w-5 shrink-0">{i + 1}.</span>
-														<input
-															className="input"
-															value={stage}
-															onChange={(e) => {
-																const nextStages = [...draft.stages];
-																nextStages[i] = e.target.value;
-																updateDraft(key, { name: t.name, stages: t.stages }, { stages: nextStages });
-															}}
-															placeholder={`Stage ${i + 1}`}
-														/>
-														<button
-															type="button"
-															onClick={() => updateDraft(key, { name: t.name, stages: t.stages }, { stages: draft.stages.filter((_, si) => si !== i) })}
-															className="text-danger text-sm shrink-0"
-														>
-															Remove
-														</button>
-													</div>
-												))}
+												<RouteFlowEditor draft={draft} onChange={(d) => setDraft(key, d)} />
 												<div className="flex gap-2 pt-1">
-													<button
-														type="button"
-														className="btn btn-outline btn-sm"
-														onClick={() => updateDraft(key, { name: t.name, stages: t.stages }, { stages: [...draft.stages, ""] })}
-													>
-														+ Add stage
-													</button>
 													<button type="button" className="btn btn-primary btn-sm" onClick={() => saveTemplate(category, t, key)} disabled={saving === key}>
 														{saving === key ? "Saving…" : "Save"}
 													</button>
@@ -438,45 +577,17 @@ function ProductionStagesSection() {
 
 									{isAddingNew ? (
 										(() => {
-											const draft = draftFor(newKey, { name: "", stages: [""] });
+											const draft = draftFor(newKey, blankDraft());
 											return (
 												<div className="border border-line rounded-lg p-3 space-y-2">
 													<input
 														className="input font-medium"
 														value={draft.name}
-														onChange={(e) => updateDraft(newKey, { name: "", stages: [""] }, { name: e.target.value })}
+														onChange={(e) => setDraft(newKey, { ...draft, name: e.target.value })}
 														placeholder="Route name, e.g. Laminated"
 													/>
-													{draft.stages.map((stage, i) => (
-														<div key={i} className="flex items-center gap-2">
-															<span className="text-xs text-muted w-5 shrink-0">{i + 1}.</span>
-															<input
-																className="input"
-																value={stage}
-																onChange={(e) => {
-																	const nextStages = [...draft.stages];
-																	nextStages[i] = e.target.value;
-																	updateDraft(newKey, { name: "", stages: [""] }, { stages: nextStages });
-																}}
-																placeholder={`Stage ${i + 1}`}
-															/>
-															<button
-																type="button"
-																onClick={() => updateDraft(newKey, { name: "", stages: [""] }, { stages: draft.stages.filter((_, si) => si !== i) })}
-																className="text-danger text-sm shrink-0"
-															>
-																Remove
-															</button>
-														</div>
-													))}
+													<RouteFlowEditor draft={draft} onChange={(d) => setDraft(newKey, d)} />
 													<div className="flex gap-2 pt-1">
-														<button
-															type="button"
-															className="btn btn-outline btn-sm"
-															onClick={() => updateDraft(newKey, { name: "", stages: [""] }, { stages: [...draft.stages, ""] })}
-														>
-															+ Add stage
-														</button>
 														<button type="button" className="btn btn-primary btn-sm" onClick={() => saveTemplate(category, null, newKey)} disabled={saving === newKey}>
 															{saving === newKey ? "Saving…" : "Save route"}
 														</button>

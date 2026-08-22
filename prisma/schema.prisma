@@ -20,35 +20,35 @@ datasource db {
 
 // Models
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  password  String
-  name      String
-  phone     String?
-  role      String   @default("WORKER")
-  active    Boolean  @default(true)
+  id       String  @id @default(cuid())
+  email    String  @unique
+  password String
+  name     String
+  phone    String?
+  role     String  @default("WORKER")
+  active   Boolean @default(true)
 
-  tasksCreated  Task[]        @relation("TasksCreated")
-  assignments   Assignment[]
-  comments      Comment[]
-  activities    ActivityLog[] @relation("ActorActivities")
+  tasksCreated     Task[]        @relation("TasksCreated")
+  assignments      Assignment[]
+  comments         Comment[]
+  activities       ActivityLog[] @relation("ActorActivities")
   subtasksAssigned Subtask[]
-  sessions      Session[]
+  sessions         Session[]
 
   attendanceLogs    AttendanceLog[]
-  shiftsScheduled   Shift[]          @relation("ShiftsAssignedBy")
-  shifts            Shift[]          @relation("ShiftsForUser")
+  shiftsScheduled   Shift[]            @relation("ShiftsAssignedBy")
+  shifts            Shift[]            @relation("ShiftsForUser")
   pushSubscriptions PushSubscription[]
   notifications     Notification[]
 
   onboardingFormsFilled  OnboardingForm[] @relation("OnboardingFormFilledBy")
   onboardingFormsCreated OnboardingForm[] @relation("OnboardingFormCreatedBy")
 
-  teamMemberships TeamMember[]
-  paymentsRecorded Payment[]
-  quickTasks      QuickTask[]
-  proofRequestsCreated ProofRequest[] @relation("ProofRequestCreatedBy")
-  stockMovements  StockMovement[]
+  teamMemberships      TeamMember[]
+  paymentsRecorded     Payment[]
+  quickTasks           QuickTask[]
+  proofRequestsCreated ProofRequest[]  @relation("ProofRequestCreatedBy")
+  stockMovements       StockMovement[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -56,13 +56,13 @@ model User {
 
 // A physical site workers can clock in from (Wrapzone T Nagar, Mylapore, Citiprints factory, etc.)
 model Location {
-  id        String   @id @default(cuid())
+  id        String  @id @default(cuid())
   name      String
   latitude  Float
   longitude Float
-  radiusM   Int      @default(150) // geofence radius in meters
+  radiusM   Int     @default(150) // geofence radius in meters
   address   String?
-  active    Boolean  @default(true)
+  active    Boolean @default(true)
 
   attendanceLogs AttendanceLog[]
   shifts         Shift[]
@@ -71,9 +71,9 @@ model Location {
 }
 
 model AttendanceLog {
-  id         String    @id @default(cuid())
-  userId     String
-  user       User      @relation(fields: [userId], references: [id])
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
 
   locationId String?
   location   Location? @relation(fields: [locationId], references: [id])
@@ -98,9 +98,9 @@ model AttendanceLog {
 
 // A planned work shift/window, assigned by an admin/manager to a worker.
 model Shift {
-  id         String   @id @default(cuid())
-  userId     String
-  user       User     @relation("ShiftsForUser", fields: [userId], references: [id])
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation("ShiftsForUser", fields: [userId], references: [id])
 
   assignedById String
   assignedBy   User   @relation("ShiftsAssignedBy", fields: [assignedById], references: [id])
@@ -109,9 +109,9 @@ model Shift {
   location   Location? @relation(fields: [locationId], references: [id])
 
   date      DateTime // day of the shift (date-only, time zeroed)
-  startTime String   // "09:00"
-  endTime   String   // "18:00"
-  taskId    String?  // optional: shift tied to a specific job
+  startTime String // "09:00"
+  endTime   String // "18:00"
+  taskId    String? // optional: shift tied to a specific job
   task      Task?    @relation(fields: [taskId], references: [id])
   notes     String?
   status    String   @default("SCHEDULED") // SCHEDULED | CONFIRMED | COMPLETED | MISSED | CANCELLED
@@ -128,52 +128,52 @@ model PushSubscription {
   userId    String
   user      User     @relation(fields: [userId], references: [id])
   fcmToken  String   @unique
-  device    String?  // "android" | "ios" | "web"
+  device    String? // "android" | "ios" | "web"
   createdAt DateTime @default(now())
 }
 
 // In-app notification feed (also fans out to push via fcmToken above)
 model Notification {
-  id        String   @id @default(cuid())
+  id        String    @id @default(cuid())
   userId    String
-  user      User     @relation(fields: [userId], references: [id])
+  user      User      @relation(fields: [userId], references: [id])
   title     String
   body      String
-  type      String   @default("GENERAL") // TASK_ASSIGNED | SHIFT_ASSIGNED | TASK_DUE | GENERAL | COMMENT
-  linkPath  String?  // e.g. "/tasks/abc123"
-  taskId    String?  // set for COMMENT notifications, used to compute per-task unread counts
+  type      String    @default("GENERAL") // TASK_ASSIGNED | SHIFT_ASSIGNED | TASK_DUE | GENERAL | COMMENT
+  linkPath  String? // e.g. "/tasks/abc123"
+  taskId    String? // set for COMMENT notifications, used to compute per-task unread counts
   readAt    DateTime?
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
 
   @@index([userId, createdAt])
   @@index([taskId])
 }
 
 model Task {
-  id             String       @id @default(cuid())
+  id             String    @id @default(cuid())
   title          String
-  description    String       @default("")
-  status         String       @default("TODO")
-  priority       String       @default("MEDIUM")
+  description    String    @default("")
+  status         String    @default("TODO")
+  priority       String    @default("MEDIUM")
   startAt        DateTime?
   dueAt          DateTime?
   estimatedHours Float?
   actualHours    Float?
-  customer       String?      // legacy free-text
+  customer       String? // legacy free-text
   customerId     String?
-  customerRef    Customer?    @relation(fields: [customerId], references: [id])
+  customerRef    Customer? @relation(fields: [customerId], references: [id])
   jobNumber      String?
   customFields   String?
   totalAmount    Float? // gated to admins + Accounts team, see canAccessPayments()
 
   createdById String
-  createdBy   User         @relation("TasksCreated", fields: [createdById], references: [id])
+  createdBy   User   @relation("TasksCreated", fields: [createdById], references: [id])
 
   subtasks        Subtask[]
   assignments     Assignment[]
   comments        Comment[]
   attachments     Attachment[]
-  activities      ActivityLog[] @relation("TaskActivities")
+  activities      ActivityLog[]        @relation("TaskActivities")
   shifts          Shift[]
   despatchItems   DespatchItem[]
   onboardingForms OnboardingForm[]
@@ -202,7 +202,7 @@ model ProofRequest {
   token  String @unique
   status String @default("PENDING") // PENDING | APPROVED | REJECTED
 
-  files        String  // JSON array: [{ url, name }]
+  files        String // JSON array: [{ url, name }]
   customerNote String?
 
   createdById String
@@ -238,6 +238,16 @@ model DespatchItem {
   parent       DespatchItem?  @relation("ItemComponents", fields: [parentItemId], references: [id])
   components   DespatchItem[] @relation("ItemComponents")
 
+  // Which route graph this item is following, set once when its route
+  // starts (auto-instantiate or explicit choose-route) -- lets both server
+  // and client look up outgoing edges from the item's current node without
+  // re-deriving the template from category-name matching.
+  // onDelete: SetNull -- deleting a route template must not block deleting
+  // (or leave dangling) items that already started on it; they just keep
+  // their already-visited stageProgress history and lose the live link.
+  stageTemplateId String?
+  stageTemplate   CategoryStageTemplate? @relation(fields: [stageTemplateId], references: [id], onDelete: SetNull)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -245,43 +255,92 @@ model DespatchItem {
 
   @@index([taskId])
   @@index([parentItemId])
+  @@index([stageTemplateId])
 }
 
-// Ordered stage names for one named route of one category ("Rigid Boxes" /
-// "Laminated" -> ["Printing", "Lamination", "Die-cutting", "Gluing", "QC"]).
-// A category can have several named templates (e.g. "Standard" vs
-// "Laminated") for jobs of the same category that take different real
-// paths -- see the choose-route flow when >1 template exists. Keyed by
-// category NAME, not a foreign key -- built-in categories (Rigid Boxes,
-// Cake Boxes, Paper Bags, Stickers, Cards, Invitation, Paperboard Boxes,
-// Others) aren't rows in TaskCategory, only admin-added custom categories
-// are, so a plain string key covers both.
+// One named route through production for a category ("Rigid Boxes" /
+// "Laminated"). A category can have several named templates (e.g.
+// "Standard" vs "Laminated") for jobs of the same category that take
+// different real paths -- see the choose-route flow when >1 template
+// exists. Keyed by category NAME, not a foreign key -- built-in categories
+// (Rigid Boxes, Cake Boxes, Paper Bags, Stickers, Cards, Invitation,
+// Paperboard Boxes, Others) aren't rows in TaskCategory, only admin-added
+// custom categories are, so a plain string key covers both.
+//
+// A route is a branching graph (StageNode + StageEdge), not a flat list --
+// built visually in Settings. Must be a DAG with exactly one start node,
+// enforced on save (no rework/QC-fail loops -- explicitly out of scope).
 model CategoryStageTemplate {
   id       String @id @default(cuid())
   category String
   name     String @default("Standard") // existing single-template-per-category rows backfill here
-  stages   String // JSON array of stage names, in order
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  nodes StageNode[]
+  edges StageEdge[]
+  items DespatchItem[]
+
   @@unique([category, name])
 }
 
-// One row per stage per item, precomputed from the category's template the
-// moment an item enters production -- gives a fixed checklist with full
-// timestamp history, not just "current stage".
+// One stage box in a route's flowchart, positioned for the visual builder.
+model StageNode {
+  id         String                @id @default(cuid())
+  templateId String
+  template   CategoryStageTemplate @relation(fields: [templateId], references: [id])
+
+  name    String
+  posX    Float   @default(0)
+  posY    Float   @default(0)
+  isStart Boolean @default(false) // exactly one per template, enforced on save
+
+  outgoingEdges StageEdge[] @relation("EdgeFrom")
+  incomingEdges StageEdge[] @relation("EdgeTo")
+
+  @@index([templateId])
+}
+
+// A directed connection between two stages in a route's flowchart. A node
+// with 2+ outgoing edges is a branch point -- advancing an item past it
+// requires an explicit choice (see choose-branch), vs. exactly 1 outgoing
+// edge which auto-advances just like a plain linear route.
+model StageEdge {
+  id         String                @id @default(cuid())
+  templateId String
+  template   CategoryStageTemplate @relation(fields: [templateId], references: [id])
+  fromNodeId String
+  toNodeId   String
+  from       StageNode             @relation("EdgeFrom", fields: [fromNodeId], references: [id])
+  to         StageNode             @relation("EdgeTo", fields: [toNodeId], references: [id])
+  label      String? // optional, cosmetic only (e.g. "if laminated")
+
+  @@index([templateId])
+  @@index([fromNodeId])
+  @@index([toNodeId])
+}
+
+// One row per stage an item has actually visited (or is currently on),
+// built as-you-go rather than precomputed -- a branching route's future
+// path isn't known until each branch choice is made. `order` is the
+// sequence this specific item visited stages in (0, 1, 2...); `nodeId`
+// identifies which StageNode so advancing can look up its outgoing edges.
 model ItemStageProgress {
   id             String       @id @default(cuid())
   despatchItemId String
   despatchItem   DespatchItem @relation(fields: [despatchItemId], references: [id])
 
-  stageName   String
-  stageIndex  Int
+  nodeId      String? // the StageNode this row represents
+  stageName   String // snapshot -- survives later node renames/deletion
+  // @default(0) purely so this column can be added to a table with existing
+  // rows without Prisma needing a full database reset -- always set
+  // explicitly on create, never actually relied on at runtime.
+  order       Int       @default(0)
   startedAt   DateTime?
   completedAt DateTime?
 
-  @@unique([despatchItemId, stageIndex])
+  @@unique([despatchItemId, order])
   @@index([despatchItemId])
 }
 
@@ -317,12 +376,12 @@ model OnboardingForm {
   status    String   @default("PENDING") // PENDING | SUBMITTED | REVOKED
   expiresAt DateTime
 
-  billingName            String?
-  billingEmail           String?
-  billingPhone           String?
-  billingSecondaryPhone  String?
-  billingAddress         String?
-  gstin                  String?
+  billingName           String?
+  billingEmail          String?
+  billingPhone          String?
+  billingSecondaryPhone String?
+  billingAddress        String?
+  gstin                 String?
 
   deliveryContactName    String?
   deliveryPhone          String?
@@ -359,19 +418,19 @@ model Customer {
   deliveryAddress        String?
   deliveryNotes          String?
 
-  tasks     Task[]
+  tasks Task[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
 model TaskCategory {
-  id     String @id @default(cuid())
-  name   String @unique
-  order  Int    @default(0)
+  id    String @id @default(cuid())
+  name  String @unique
+  order Int    @default(0)
 
   fields    TaskCategoryField[]
-  createdAt DateTime @default(now())
+  createdAt DateTime            @default(now())
 }
 
 model TaskCategoryField {
@@ -381,8 +440,8 @@ model TaskCategoryField {
   key        String
   label      String
   type       String // TEXT | NUMBER | DATE | BOOLEAN
-  required   Boolean @default(false)
-  order      Int     @default(0)
+  required   Boolean      @default(false)
+  order      Int          @default(0)
 
   createdAt DateTime @default(now())
 
@@ -399,17 +458,17 @@ model Session {
 }
 
 model Subtask {
-  id             String        @id @default(cuid())
+  id             String    @id @default(cuid())
   taskId         String
-  task           Task          @relation(fields: [taskId], references: [id])
+  task           Task      @relation(fields: [taskId], references: [id])
   title          String
-  status         String        @default("TODO")
+  status         String    @default("TODO")
   assigneeId     String?
-  assignee       User?         @relation(fields: [assigneeId], references: [id])
+  assignee       User?     @relation(fields: [assigneeId], references: [id])
   dueAt          DateTime?
   estimatedHours Float?
   actualHours    Float?
-  order          Int           @default(0)
+  order          Int       @default(0)
 
   comments    Comment[]
   attachments Attachment[]
@@ -419,10 +478,10 @@ model Subtask {
 }
 
 model Assignment {
-  id      String @id @default(cuid())
-  taskId  String
-  userId  String
-  role    String @default("assignee")
+  id     String @id @default(cuid())
+  taskId String
+  userId String
+  role   String @default("assignee")
 
   task Task @relation(fields: [taskId], references: [id])
   user User @relation(fields: [userId], references: [id])
@@ -478,10 +537,10 @@ model TaskTeamAssignment {
 }
 
 model Comment {
-  id        String   @id @default(cuid())
-  body      String
-  authorId  String
-  author    User     @relation(fields: [authorId], references: [id])
+  id       String @id @default(cuid())
+  body     String
+  authorId String
+  author   User   @relation(fields: [authorId], references: [id])
 
   // Polymorphic via nullable FKs
   taskId    String?
@@ -494,10 +553,10 @@ model Comment {
 }
 
 model Attachment {
-  id        String   @id @default(cuid())
-  url       String
-  name      String
-  size      Int
+  id   String @id @default(cuid())
+  url  String
+  name String
+  size Int
 
   // Polymorphic via nullable FKs
   taskId    String?
@@ -509,22 +568,22 @@ model Attachment {
 }
 
 model ActivityLog {
-  id         String   @id @default(cuid())
-  entityType String   // e.g., "task" | "subtask"
+  id         String  @id @default(cuid())
+  entityType String // e.g., "task" | "subtask"
   entityId   String
-  action     String   // e.g., "STATUS_CHANGE", "ASSIGNED", "UPDATED"
+  action     String // e.g., "STATUS_CHANGE", "ASSIGNED", "UPDATED"
   before     String?
   after      String?
 
   actorId String
-  actor   User     @relation("ActorActivities", fields: [actorId], references: [id])
+  actor   User   @relation("ActorActivities", fields: [actorId], references: [id])
 
   // Optional direct task linkage for quicker querying. SetNull (not the
   // default Restrict) so a task's audit history survives its deletion --
   // the whole point of an audit trail is to still show "who deleted this
   // and when" after the task itself is gone.
-  taskId  String?
-  task    Task?    @relation("TaskActivities", fields: [taskId], references: [id], onDelete: SetNull)
+  taskId String?
+  task   Task?   @relation("TaskActivities", fields: [taskId], references: [id], onDelete: SetNull)
 
   at DateTime @default(now())
 
@@ -536,10 +595,10 @@ model ActivityLog {
 // customer, items, or payments, just something to jot down with an optional
 // due date/time. Each user only ever sees their own.
 model QuickTask {
-  id     String  @id @default(cuid())
-  text   String
-  dueAt  DateTime?
-  done   Boolean @default(false)
+  id    String    @id @default(cuid())
+  text  String
+  dueAt DateTime?
+  done  Boolean   @default(false)
 
   createdById String
   createdBy   User   @relation(fields: [createdById], references: [id])
@@ -554,11 +613,11 @@ model QuickTask {
 // adjustment) -- not linked to specific job items yet, just a running
 // balance with a reorder threshold.
 model Material {
-  id           String   @id @default(cuid())
+  id           String  @id @default(cuid())
   name         String
-  unit         String   // "kg", "sheets", "rolls", etc. -- free text, not an enum
-  currentStock Float    @default(0)
-  reorderPoint Float    @default(0)
+  unit         String // "kg", "sheets", "rolls", etc. -- free text, not an enum
+  currentStock Float   @default(0)
+  reorderPoint Float   @default(0)
   notes        String?
 
   movements StockMovement[]
@@ -572,12 +631,12 @@ model StockMovement {
   materialId String
   material   Material @relation(fields: [materialId], references: [id])
 
-  delta  Float  // signed: +qty for RECEIVED/ADJUSTMENT-up, -qty for USED/WASTED
+  delta  Float // signed: +qty for RECEIVED/ADJUSTMENT-up, -qty for USED/WASTED
   reason String // RECEIVED | USED | WASTED | ADJUSTMENT
   note   String?
 
   actorId String
-  actor   User   @relation(fields: [actorId], references: [id])
+  actor   User     @relation(fields: [actorId], references: [id])
   at      DateTime @default(now())
 
   @@index([materialId, at])
