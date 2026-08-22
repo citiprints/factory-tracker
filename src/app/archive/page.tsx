@@ -83,7 +83,7 @@ export default function ArchivePage() {
 		async function load() {
 			setLoading(true);
 			try {
-				const res = await fetch("/api/tasks");
+				const res = await fetch("/api/tasks?includeArchived=true&limit=500");
 				if (res.ok) {
 					const json = await res.json();
 					const loaded: Task[] = (json.tasks ?? []).map((t: any) => ({
