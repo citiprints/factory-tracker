@@ -325,6 +325,62 @@ html[data-theme="dark"] {
   .chip-info   { background: var(--info-soft);   color: var(--info); }
   .chip-plain::before { display: none; }
 
+  /* ---- Stage flowchart (item production routing) ------------------------ */
+  .stage-flow {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    row-gap: 0.4rem;
+  }
+  .stage-node {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.3rem 0.65rem;
+    border-radius: 0.5rem;
+    border: 1px solid var(--line);
+    background: var(--wash);
+    color: var(--muted);
+    font-size: 0.74rem;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+  .stage-node-mark {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.1rem;
+    height: 1.1rem;
+    border-radius: 999px;
+    font-size: 0.62rem;
+    font-weight: 600;
+    background: var(--line-strong);
+    color: var(--surface);
+    flex-shrink: 0;
+  }
+  .stage-node-done {
+    border-color: var(--ok);
+    background: var(--ok-soft);
+    color: var(--ok);
+  }
+  .stage-node-done .stage-node-mark { background: var(--ok); color: var(--surface); }
+  .stage-node-current {
+    border-color: var(--info);
+    background: var(--info-soft);
+    color: var(--info);
+    font-weight: 600;
+  }
+  .stage-node-current .stage-node-mark { background: var(--info); color: var(--surface); }
+  .stage-connector {
+    width: 1.1rem;
+    height: 2px;
+    background: var(--line-strong);
+    flex-shrink: 0;
+  }
+  .stage-connector-done {
+    background: var(--ok);
+  }
+
   /* ---- Job-ticket metadata (dates, counts, ids) ------------------------ */
   .meta {
     font-family: var(--font-mono);

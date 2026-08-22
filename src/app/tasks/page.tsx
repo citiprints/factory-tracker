@@ -1162,21 +1162,29 @@ function TasksPageInner() {
 		if (item.stageProgress && item.stageProgress.length > 0) {
 			const next = item.stageProgress.find(s => !s.completedAt);
 			return (
-				<div className="flex flex-wrap items-center gap-1">
-					{item.stageProgress.map((stage, si) => {
-						const isNext = !stage.completedAt && (si === 0 || !!item.stageProgress![si - 1].completedAt);
-						return (
-							<span
-								key={stage.id}
-								className={stage.completedAt ? "chip chip-ok" : isNext ? "chip chip-info" : "chip chip-plain"}
-								title={stage.completedAt ? `Completed ${new Date(stage.completedAt).toLocaleString()}` : stage.stageName}
-							>
-								{stage.completedAt ? "✓ " : ""}{stage.stageName}
-							</span>
-						);
-					})}
+				<div className="flex flex-col gap-2">
+					<div className="stage-flow">
+						{item.stageProgress.map((stage, si) => {
+							const isNext = !stage.completedAt && (si === 0 || !!item.stageProgress![si - 1].completedAt);
+							const state = stage.completedAt ? "done" : isNext ? "current" : "upcoming";
+							return (
+								<div key={stage.id} className="flex items-center">
+									<div
+										className={state === "done" ? "stage-node stage-node-done" : state === "current" ? "stage-node stage-node-current" : "stage-node"}
+										title={stage.completedAt ? `Completed ${new Date(stage.completedAt).toLocaleString()}` : stage.stageName}
+									>
+										<span className="stage-node-mark">{stage.completedAt ? "✓" : si + 1}</span>
+										{stage.stageName}
+									</div>
+									{si < item.stageProgress!.length - 1 && (
+										<div className={stage.completedAt ? "stage-connector stage-connector-done" : "stage-connector"} />
+									)}
+								</div>
+							);
+						})}
+					</div>
 					{next ? (
-						<button type="button" className="btn btn-outline btn-sm" onClick={() => advanceStage(item.id)}>
+						<button type="button" className="btn btn-outline btn-sm self-start" onClick={() => advanceStage(item.id)}>
 							Mark &quot;{next.stageName}&quot; done
 						</button>
 					) : item.status !== "PACKED" && item.status !== "DESPATCHED" ? (
@@ -1184,7 +1192,7 @@ function TasksPageInner() {
 						// advanced yet -- either a normal one-click confirmation,
 						// or (if this item has components) a retry that will keep
 						// failing with a clear reason until they're all Despatched.
-						<button type="button" className="btn btn-outline btn-sm" onClick={() => updateDespatchItemStatus(item.id, "PACKED")}>
+						<button type="button" className="btn btn-outline btn-sm self-start" onClick={() => updateDespatchItemStatus(item.id, "PACKED")}>
 							Mark Packed
 						</button>
 					) : null}
