@@ -34,5 +34,22 @@ export const DESPATCH_ITEM_STATUSES = [
 ] as const;
 export type DespatchItemStatus = (typeof DESPATCH_ITEM_STATUSES)[number];
 
+// Built-in item categories -- previously hardcoded identically in three
+// separate <select> forms in src/app/tasks/page.tsx (create-task item form,
+// edit-task item form, in-task "Add item" form), which is exactly the kind
+// of duplication that's drifted out of sync before. Admin-added custom
+// categories live in the TaskCategory table instead; this list is only the
+// fixed built-in set.
+export const BUILT_IN_ITEM_CATEGORIES = [
+  "Rigid Boxes",
+  "Cake Boxes",
+  "Paper Bags",
+  "Stickers",
+  "Cards",
+  "Invitation",
+  "Paperboard Boxes",
+  "Others",
+] as const;
+
 export const PAYMENT_MODES = ["CASH", "BANK_TRANSFER", "UPI", "CHEQUE", "CARD", "OTHER"] as const;
 export type PaymentMode = (typeof PAYMENT_MODES)[number];

@@ -67,7 +67,8 @@ export async function GET(
 				// as part of the normal list, instead of missing its items and
 				// onboarding badge.
 				despatchItems: {
-					orderBy: { order: "asc" }
+					orderBy: { order: "asc" },
+					include: { stageProgress: { orderBy: { stageIndex: "asc" } } },
 				},
 				onboardingForms: {
 					where: { status: { not: "REVOKED" } },
@@ -359,6 +360,13 @@ export async function DELETE(
 			// Delete attachments
 			prisma.attachment.deleteMany({
 				where: { taskId: id }
+			}),
+			// Delete item stage-routing progress -- must happen before
+			// despatchItem.deleteMany below, same RESTRICT-FK reasoning as
+			// the payments comment underneath (ItemStageProgress.despatchItemId
+			// has no cascade either).
+			prisma.itemStageProgress.deleteMany({
+				where: { despatchItem: { taskId: id } }
 			}),
 			// Delete despatch list items
 			prisma.despatchItem.deleteMany({

@@ -232,7 +232,41 @@ model DespatchItem {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  stageProgress ItemStageProgress[]
+
   @@index([taskId])
+}
+
+// Ordered stage names for one category ("Rigid Boxes" -> ["Printing",
+// "Die-cutting", "Gluing", "QC"]). Keyed by category NAME, not a foreign
+// key -- built-in categories (Rigid Boxes, Cake Boxes, Paper Bags,
+// Stickers, Cards, Invitation, Paperboard Boxes, Others) aren't rows in
+// TaskCategory, only admin-added custom categories are, so a plain unique
+// string key covers both.
+model CategoryStageTemplate {
+  id       String @id @default(cuid())
+  category String @unique
+  stages   String // JSON array of stage names, in order
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// One row per stage per item, precomputed from the category's template the
+// moment an item enters production -- gives a fixed checklist with full
+// timestamp history, not just "current stage".
+model ItemStageProgress {
+  id             String       @id @default(cuid())
+  despatchItemId String
+  despatchItem   DespatchItem @relation(fields: [despatchItemId], references: [id])
+
+  stageName   String
+  stageIndex  Int
+  startedAt   DateTime?
+  completedAt DateTime?
+
+  @@unique([despatchItemId, stageIndex])
+  @@index([despatchItemId])
 }
 
 // An individual payment received against a task's total amount — a job

@@ -53,6 +53,35 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 			});
 			await maybeArchiveTask(despatchItem.taskId);
 
+			// Entering production for the first time: if this item's category
+			// has a stage template configured, precompute one ItemStageProgress
+			// row per stage. Categories with no template are untouched -- the
+			// item just keeps using the plain status dropdown.
+			if (despatchItem.status === "PRE_PRODUCTION") {
+				const existingProgress = await prisma.itemStageProgress.count({ where: { despatchItemId: despatchItem.id } });
+				if (existingProgress === 0) {
+					let category: string | undefined;
+					try {
+						category = despatchItem.specFields ? JSON.parse(despatchItem.specFields).category : undefined;
+					} catch {}
+					if (category) {
+						const template = await prisma.categoryStageTemplate.findUnique({ where: { category } });
+						if (template) {
+							const stages: string[] = JSON.parse(template.stages);
+							if (stages.length > 0) {
+								await prisma.itemStageProgress.createMany({
+									data: stages.map((stageName, stageIndex) => ({
+										despatchItemId: despatchItem.id,
+										stageName,
+										stageIndex,
+									})),
+								});
+							}
+						}
+					}
+				}
+			}
+
 			if (despatchItem.status === "DESPATCHED") {
 				const task = await prisma.task.findUnique({
 					where: { id: despatchItem.taskId },
@@ -83,6 +112,10 @@ export async function DELETE(_: Request, { params }: { params: Promise<{ id: str
 
 	try {
 		const { id } = await params;
+		// Same RESTRICT-FK reasoning as the task-deletion route -- an item
+		// with any stage-routing progress can't be deleted until those rows
+		// are cleared first.
+		await prisma.itemStageProgress.deleteMany({ where: { despatchItemId: id } });
 		await prisma.despatchItem.delete({ where: { id } });
 		return NextResponse.json({ ok: true });
 	} catch (error) {

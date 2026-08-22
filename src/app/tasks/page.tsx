@@ -7,6 +7,7 @@ import TaskComments from "@/components/TaskComments";
 import { useRefreshCounts } from "../CountsContext";
 import { CustomerFields, EMPTY_CUSTOMER_FORM, customerFormToPayload, type CustomerFormState } from "@/components/CustomerFields";
 import { despatchItemStatusChipClass } from "@/lib/despatchItemStatus";
+import { BUILT_IN_ITEM_CATEGORIES } from "@/lib/constants";
 
 type Task = {
 	id: string;
@@ -44,6 +45,14 @@ type Subtask = {
 	order: number;
 };
 
+type ItemStage = {
+	id: string;
+	stageName: string;
+	stageIndex: number;
+	startedAt: string | null;
+	completedAt: string | null;
+};
+
 type DespatchItem = {
 	id: string;
 	taskId: string;
@@ -53,6 +62,7 @@ type DespatchItem = {
 	status: "PENDING_CLIENT_APPROVAL" | "PRE_PRODUCTION" | "PRODUCTION" | "PACKED" | "DESPATCHED";
 	order: number;
 	specFields?: Record<string, any> | null;
+	stageProgress?: ItemStage[];
 };
 
 type ProofFile = { url: string; name: string };
@@ -1063,6 +1073,11 @@ function TasksPageInner() {
 		if (res.ok) load();
 	}
 
+	async function advanceStage(itemId: string) {
+		const res = await fetch(`/api/despatch-items/${itemId}/advance-stage`, { method: "POST" });
+		if (res.ok) load();
+	}
+
 	async function deleteDespatchItem(itemId: string) {
 		if (!confirm("Remove this item?")) return;
 		const res = await fetch(`/api/despatch-items/${itemId}`, { method: "DELETE" });
@@ -1677,14 +1692,7 @@ function TasksPageInner() {
 							<div className="flex flex-wrap gap-2">
 								<select className="input flex-1 min-w-[8rem]" value={newDespatchCategory} onChange={(e) => setNewDespatchCategory(e.target.value)}>
 									<option value="">Select type</option>
-									<option value="Rigid Boxes">Rigid Boxes</option>
-									<option value="Cake Boxes">Cake Boxes</option>
-									<option value="Paper Bags">Paper Bags</option>
-									<option value="Stickers">Stickers</option>
-									<option value="Cards">Cards</option>
-									<option value="Invitation">Invitation</option>
-									<option value="Paperboard Boxes">Paperboard Boxes</option>
-									<option value="Others">Others</option>
+									{BUILT_IN_ITEM_CATEGORIES.map(c => (<option key={c} value={c}>{c}</option>))}
 									{dynamicCategories.map(c => (<option key={c.id} value={c.name}>{c.name}</option>))}
 								</select>
 								<input className="input flex-[2] min-w-[8rem]" placeholder="Item name" value={newDespatchName} onChange={(e) => setNewDespatchName(e.target.value)} />
@@ -2712,14 +2720,7 @@ function TasksPageInner() {
 												<div className="flex flex-wrap gap-2">
 													<select className="input flex-1 min-w-[8rem] text-sm" value={newDespatchCategory} onChange={(e) => setNewDespatchCategory(e.target.value)}>
 														<option value="">Select type</option>
-														<option value="Rigid Boxes">Rigid Boxes</option>
-														<option value="Cake Boxes">Cake Boxes</option>
-														<option value="Paper Bags">Paper Bags</option>
-														<option value="Stickers">Stickers</option>
-														<option value="Cards">Cards</option>
-														<option value="Invitation">Invitation</option>
-														<option value="Paperboard Boxes">Paperboard Boxes</option>
-														<option value="Others">Others</option>
+														{BUILT_IN_ITEM_CATEGORIES.map(c => (<option key={c} value={c}>{c}</option>))}
 														{dynamicCategories.map(c => (<option key={c.id} value={c.name}>{c.name}</option>))}
 													</select>
 													<input className="input flex-[2] min-w-[8rem] text-sm" placeholder="Item name" value={newDespatchName} onChange={(e) => setNewDespatchName(e.target.value)} required />
@@ -2751,14 +2752,7 @@ function TasksPageInner() {
 																<div className="flex flex-wrap gap-2">
 																	<select className="input flex-1 min-w-[8rem] text-sm" value={editDespatchCategory} onChange={(e) => setEditDespatchCategory(e.target.value)}>
 																		<option value="">Select type</option>
-																		<option value="Rigid Boxes">Rigid Boxes</option>
-																		<option value="Cake Boxes">Cake Boxes</option>
-																		<option value="Paper Bags">Paper Bags</option>
-																		<option value="Stickers">Stickers</option>
-																		<option value="Cards">Cards</option>
-																		<option value="Invitation">Invitation</option>
-																		<option value="Paperboard Boxes">Paperboard Boxes</option>
-																		<option value="Others">Others</option>
+																		{BUILT_IN_ITEM_CATEGORIES.map(c => (<option key={c} value={c}>{c}</option>))}
 																		{dynamicCategories.map(c => (<option key={c.id} value={c.name}>{c.name}</option>))}
 																	</select>
 																	<input className="input flex-[2] min-w-[8rem] text-sm" placeholder="Item name" value={editDespatchName} onChange={(e) => setEditDespatchName(e.target.value)} required />
@@ -2800,17 +2794,42 @@ function TasksPageInner() {
 																	)}
 																</div>
 																<div className="flex items-center gap-2">
-																	<select
-																		className={`input text-xs py-1 !w-auto ${itemStatusChipClass(item.status)}`}
-																		value={item.status}
-																		onChange={(e) => updateDespatchItemStatus(item.id, e.target.value as DespatchItem["status"])}
-																	>
-																		<option value="PENDING_CLIENT_APPROVAL">Pending Client Approval</option>
-																		<option value="PRE_PRODUCTION">Pre Production</option>
-																		<option value="PRODUCTION">Production</option>
-																		<option value="PACKED">Packed</option>
-																		<option value="DESPATCHED">Despatched</option>
-																	</select>
+																	{item.stageProgress && item.stageProgress.length > 0 ? (
+																		<div className="flex flex-wrap items-center gap-1">
+																			{item.stageProgress.map((stage, si) => {
+																				const isNext = !stage.completedAt && (si === 0 || !!item.stageProgress![si - 1].completedAt);
+																				return (
+																					<span
+																						key={stage.id}
+																						className={stage.completedAt ? "chip chip-ok" : isNext ? "chip chip-info" : "chip chip-plain"}
+																						title={stage.completedAt ? `Completed ${new Date(stage.completedAt).toLocaleString()}` : stage.stageName}
+																					>
+																						{stage.completedAt ? "✓ " : ""}{stage.stageName}
+																					</span>
+																				);
+																			})}
+																			{(() => {
+																				const next = item.stageProgress.find(s => !s.completedAt);
+																				return next ? (
+																					<button type="button" className="btn btn-outline btn-sm" onClick={() => advanceStage(item.id)}>
+																						Mark &quot;{next.stageName}&quot; done
+																					</button>
+																				) : null;
+																			})()}
+																		</div>
+																	) : (
+																		<select
+																			className={`input text-xs py-1 !w-auto ${itemStatusChipClass(item.status)}`}
+																			value={item.status}
+																			onChange={(e) => updateDespatchItemStatus(item.id, e.target.value as DespatchItem["status"])}
+																		>
+																			<option value="PENDING_CLIENT_APPROVAL">Pending Client Approval</option>
+																			<option value="PRE_PRODUCTION">Pre Production</option>
+																			<option value="PRODUCTION">Production</option>
+																			<option value="PACKED">Packed</option>
+																			<option value="DESPATCHED">Despatched</option>
+																		</select>
+																	)}
 																	<button
 																		type="button"
 																		onClick={() => startEditDespatchItem(item)}
