@@ -6,6 +6,7 @@ import { useCurrentUser } from "../UserContext";
 import TaskComments from "@/components/TaskComments";
 import { useRefreshCounts } from "../CountsContext";
 import { CustomerFields, EMPTY_CUSTOMER_FORM, customerFormToPayload, type CustomerFormState } from "@/components/CustomerFields";
+import { despatchItemStatusChipClass } from "@/lib/despatchItemStatus";
 
 type Task = {
 	id: string;
@@ -845,12 +846,7 @@ function TasksPageInner() {
 	const PAYMENT_MODE_LABELS: Record<string, string> = {
 		CASH: "Cash", BANK_TRANSFER: "Bank Transfer", UPI: "UPI", CHEQUE: "Cheque", CARD: "Card", OTHER: "Other",
 	};
-	function itemStatusChipClass(status: string): string {
-		if (status === "DESPATCHED") return "chip chip-ok";
-		if (status === "PACKED") return "chip chip-warn";
-		if (status === "PRODUCTION") return "chip chip-info";
-		return "chip chip-plain";
-	}
+	const itemStatusChipClass = despatchItemStatusChipClass;
 	function formatDueWithDaysRemaining(dueAt: string): string {
 		const due = new Date(dueAt);
 		const dateLabel = due.toLocaleDateString();

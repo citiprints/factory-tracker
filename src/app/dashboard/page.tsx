@@ -83,6 +83,106 @@ function ClockCard() {
 	);
 }
 
+function sameDay(a: Date, b: Date): boolean {
+	return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+}
+
+function CalendarView({ tasks, isAdmin }: { tasks: Task[]; isAdmin: boolean }) {
+	const [month, setMonth] = useState(() => { const d = new Date(); d.setDate(1); d.setHours(0, 0, 0, 0); return d; });
+	const [selectedDay, setSelectedDay] = useState<Date | null>(null);
+
+	const tasksWithDue = tasks.filter(t => t.dueAt && t.status !== "DONE" && t.status !== "CANCELLED" && t.status !== "ARCHIVED");
+
+	// A 6-week grid (42 cells) starting from the Sunday on/before the 1st,
+	// so every month renders the same fixed height regardless of how many
+	// weeks it actually spans.
+	const gridStart = new Date(month);
+	gridStart.setDate(gridStart.getDate() - gridStart.getDay());
+	const days: Date[] = Array.from({ length: 42 }, (_, i) => {
+		const d = new Date(gridStart);
+		d.setDate(gridStart.getDate() + i);
+		return d;
+	});
+
+	const today = new Date();
+
+	function tasksForDay(day: Date): Task[] {
+		return tasksWithDue.filter(t => sameDay(new Date(t.dueAt!), day));
+	}
+
+	function goToMonth(delta: number) {
+		setMonth(m => {
+			const next = new Date(m);
+			next.setMonth(next.getMonth() + delta);
+			return next;
+		});
+		setSelectedDay(null);
+	}
+
+	const selectedTasks = selectedDay ? tasksForDay(selectedDay) : [];
+
+	return (
+		<section className="card card-pad space-y-3">
+			<div className="flex items-center justify-between">
+				<h2 className="text-lg font-semibold tracking-tight">
+					{month.toLocaleDateString(undefined, { month: "long", year: "numeric" })}
+				</h2>
+				<div className="flex gap-1">
+					<button type="button" className="btn btn-outline btn-sm" onClick={() => goToMonth(-1)}>‹</button>
+					<button type="button" className="btn btn-outline btn-sm" onClick={() => { setMonth(() => { const d = new Date(); d.setDate(1); d.setHours(0, 0, 0, 0); return d; }); setSelectedDay(null); }}>Today</button>
+					<button type="button" className="btn btn-outline btn-sm" onClick={() => goToMonth(1)}>›</button>
+				</div>
+			</div>
+
+			<div className="grid grid-cols-7 gap-1 text-center">
+				{["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(d => (
+					<div key={d} className="text-xs text-muted font-medium py-1">{d}</div>
+				))}
+				{days.map((day, i) => {
+					const inMonth = day.getMonth() === month.getMonth();
+					const dayTasks = tasksForDay(day);
+					const overdue = dayTasks.some(t => new Date(t.dueAt!) < today && !sameDay(day, today));
+					const isToday = sameDay(day, today);
+					const isSelected = selectedDay && sameDay(day, selectedDay);
+					return (
+						<button
+							key={i}
+							type="button"
+							onClick={() => setSelectedDay(dayTasks.length > 0 ? day : null)}
+							className={`aspect-square rounded-lg text-xs flex flex-col items-center justify-center gap-0.5 transition-colors ${
+								isSelected ? "bg-accent text-white" : isToday ? "border border-accent" : "hover:bg-wash"
+							} ${!inMonth ? "opacity-30" : ""}`}
+						>
+							<span>{day.getDate()}</span>
+							{dayTasks.length > 0 && (
+								<span className={`w-1.5 h-1.5 rounded-full ${isSelected ? "bg-white" : overdue ? "bg-danger" : "bg-accent"}`} />
+							)}
+						</button>
+					);
+				})}
+			</div>
+
+			{selectedDay && (
+				<div className="pt-2 border-t border-line space-y-2">
+					<h3 className="text-sm font-medium">
+						{selectedDay.toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" })}
+					</h3>
+					{selectedTasks.map(task => (
+						<Link
+							key={task.id}
+							href={`/tasks?open=${task.id}`}
+							className="block text-sm p-2 rounded-lg hover:bg-wash"
+						>
+							<span className="font-medium">{task.title}</span>
+							{task.customerRef?.name && <span className="text-muted"> · {task.customerRef.name}</span>}
+						</Link>
+					))}
+				</div>
+			)}
+		</section>
+	);
+}
+
 export default function DashboardPage() {
 	const currentUser = useCurrentUser();
 	const isAdmin = currentUser?.role === "ADMIN" || currentUser?.role === "MANAGER";
@@ -236,6 +336,8 @@ export default function DashboardPage() {
 							</div>
 						)}
 					</section>
+
+					<CalendarView tasks={scopedTasks} isAdmin={isAdmin} />
 				</>
 			)}
 		</div>
