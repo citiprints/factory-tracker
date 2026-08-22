@@ -229,27 +229,43 @@ model DespatchItem {
   order      Int     @default(0)
   specFields String? // JSON: { category, and category-specific spec keys }
 
+  // A component is just a DespatchItem with a parent -- full reuse of
+  // category/specFields/status/stageProgress, no separate model. A
+  // top-level item (parentItemId null) can't move to PACKED/DESPATCHED
+  // until every one of its components is itself DESPATCHED, see the
+  // assembly gate in src/app/api/despatch-items/[id]/route.ts.
+  parentItemId String?
+  parent       DespatchItem?  @relation("ItemComponents", fields: [parentItemId], references: [id])
+  components   DespatchItem[] @relation("ItemComponents")
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   stageProgress ItemStageProgress[]
 
   @@index([taskId])
+  @@index([parentItemId])
 }
 
-// Ordered stage names for one category ("Rigid Boxes" -> ["Printing",
-// "Die-cutting", "Gluing", "QC"]). Keyed by category NAME, not a foreign
-// key -- built-in categories (Rigid Boxes, Cake Boxes, Paper Bags,
-// Stickers, Cards, Invitation, Paperboard Boxes, Others) aren't rows in
-// TaskCategory, only admin-added custom categories are, so a plain unique
-// string key covers both.
+// Ordered stage names for one named route of one category ("Rigid Boxes" /
+// "Laminated" -> ["Printing", "Lamination", "Die-cutting", "Gluing", "QC"]).
+// A category can have several named templates (e.g. "Standard" vs
+// "Laminated") for jobs of the same category that take different real
+// paths -- see the choose-route flow when >1 template exists. Keyed by
+// category NAME, not a foreign key -- built-in categories (Rigid Boxes,
+// Cake Boxes, Paper Bags, Stickers, Cards, Invitation, Paperboard Boxes,
+// Others) aren't rows in TaskCategory, only admin-added custom categories
+// are, so a plain string key covers both.
 model CategoryStageTemplate {
   id       String @id @default(cuid())
-  category String @unique
+  category String
+  name     String @default("Standard") // existing single-template-per-category rows backfill here
   stages   String // JSON array of stage names, in order
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@unique([category, name])
 }
 
 // One row per stage per item, precomputed from the category's template the

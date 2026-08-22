@@ -6,6 +6,7 @@ import { DESPATCH_ITEM_STATUSES } from "@/lib/constants";
 import { maybeArchiveTask } from "@/lib/tasks";
 import { logActivity } from "@/lib/audit";
 import { sendWhatsAppMessage } from "@/lib/whatsapp";
+import { instantiateStages, collectComponentIdsDeep } from "@/lib/productionRouting";
 
 const UpdateDespatchItemSchema = z.object({
 	name: z.string().min(1).optional(),
@@ -28,6 +29,24 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 		const previousStatus = "status" in data
 			? (await prisma.despatchItem.findUnique({ where: { id }, select: { status: true } }))?.status
 			: undefined;
+
+		// Assembly gate: a top-level item with components can't be Packed or
+		// Despatched until every one of its components is itself Despatched.
+		// Components have no special pipeline of their own -- this only fires
+		// going the other way, for the parent that depends on them.
+		if (data.status === "PACKED" || data.status === "DESPATCHED") {
+			const components = await prisma.despatchItem.findMany({
+				where: { parentItemId: id },
+				select: { name: true, status: true },
+			});
+			const pending = components.filter((c) => c.status !== "DESPATCHED");
+			if (pending.length > 0) {
+				return NextResponse.json(
+					{ error: `All components must be Despatched first: ${pending.map((c) => c.name).join(", ")}` },
+					{ status: 409 }
+				);
+			}
+		}
 
 		const despatchItem = await prisma.despatchItem.update({
 			where: { id },
@@ -54,9 +73,11 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 			await maybeArchiveTask(despatchItem.taskId);
 
 			// Entering production for the first time: if this item's category
-			// has a stage template configured, precompute one ItemStageProgress
-			// row per stage. Categories with no template are untouched -- the
-			// item just keeps using the plain status dropdown.
+			// has exactly one named route, precompute its ItemStageProgress
+			// rows automatically (zero extra clicks, same as before). If it has
+			// several, leave progress empty -- the client shows a "Choose
+			// route" picker instead, which calls POST .../choose-route. A
+			// category with no template at all is untouched -- plain dropdown.
 			if (despatchItem.status === "PRE_PRODUCTION") {
 				const existingProgress = await prisma.itemStageProgress.count({ where: { despatchItemId: despatchItem.id } });
 				if (existingProgress === 0) {
@@ -65,18 +86,10 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 						category = despatchItem.specFields ? JSON.parse(despatchItem.specFields).category : undefined;
 					} catch {}
 					if (category) {
-						const template = await prisma.categoryStageTemplate.findUnique({ where: { category } });
-						if (template) {
-							const stages: string[] = JSON.parse(template.stages);
-							if (stages.length > 0) {
-								await prisma.itemStageProgress.createMany({
-									data: stages.map((stageName, stageIndex) => ({
-										despatchItemId: despatchItem.id,
-										stageName,
-										stageIndex,
-									})),
-								});
-							}
+						const templates = await prisma.categoryStageTemplate.findMany({ where: { category } });
+						if (templates.length === 1) {
+							const stages: string[] = JSON.parse(templates[0].stages);
+							await instantiateStages(despatchItem.id, stages);
 						}
 					}
 				}
@@ -112,11 +125,18 @@ export async function DELETE(_: Request, { params }: { params: Promise<{ id: str
 
 	try {
 		const { id } = await params;
+		// Components have no independent existence without their parent --
+		// deleting a top-level item takes its whole component tree with it.
 		// Same RESTRICT-FK reasoning as the task-deletion route -- an item
 		// with any stage-routing progress can't be deleted until those rows
-		// are cleared first.
-		await prisma.itemStageProgress.deleteMany({ where: { despatchItemId: id } });
-		await prisma.despatchItem.delete({ where: { id } });
+		// are cleared first, deepest descendants first so no row still
+		// references an already-deleted parent.
+		const componentIds = await collectComponentIdsDeep(id);
+		const allIds = [...componentIds.reverse(), id];
+		await prisma.itemStageProgress.deleteMany({ where: { despatchItemId: { in: allIds } } });
+		for (const itemId of allIds) {
+			await prisma.despatchItem.delete({ where: { id: itemId } });
+		}
 		return NextResponse.json({ ok: true });
 	} catch (error) {
 		return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });

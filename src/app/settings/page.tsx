@@ -262,11 +262,16 @@ function CategoriesSection() {
 	);
 }
 
+type StageTemplate = { id: string; category: string; name: string; stages: string[] };
+
 function ProductionStagesSection() {
 	const [customCategories, setCustomCategories] = useState<string[]>([]);
-	const [stagesByCategory, setStagesByCategory] = useState<Record<string, string[]>>({});
+	const [templates, setTemplates] = useState<StageTemplate[]>([]);
 	const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
-	const [saving, setSaving] = useState(false);
+	// Local edit buffers, keyed by template id (or "new" for an unsaved one
+	// being created for a category).
+	const [drafts, setDrafts] = useState<Record<string, { name: string; stages: string[] }>>({});
+	const [saving, setSaving] = useState<string | null>(null);
 	const [error, setError] = useState<string | null>(null);
 
 	async function load() {
@@ -277,9 +282,7 @@ function ProductionStagesSection() {
 		}
 		if (stagesRes.ok) {
 			const json = await stagesRes.json();
-			const map: Record<string, string[]> = {};
-			for (const t of json.templates ?? []) map[t.category] = t.stages;
-			setStagesByCategory(map);
+			setTemplates(json.templates ?? []);
 		}
 	}
 
@@ -287,63 +290,80 @@ function ProductionStagesSection() {
 
 	const allCategories = Array.from(new Set([...BUILT_IN_ITEM_CATEGORIES, ...customCategories]));
 
-	function stagesFor(category: string): string[] {
-		return stagesByCategory[category] ?? [];
+	function templatesFor(category: string): StageTemplate[] {
+		return templates.filter(t => t.category === category);
 	}
 
-	function updateStage(category: string, index: number, value: string) {
-		setStagesByCategory(prev => {
-			const next = [...(prev[category] ?? [])];
-			next[index] = value;
-			return { ...prev, [category]: next };
-		});
+	function draftFor(key: string, fallback: { name: string; stages: string[] }) {
+		return drafts[key] ?? fallback;
 	}
 
-	function addStage(category: string) {
-		setStagesByCategory(prev => ({ ...prev, [category]: [...(prev[category] ?? []), ""] }));
+	function updateDraft(key: string, fallback: { name: string; stages: string[] }, patch: Partial<{ name: string; stages: string[] }>) {
+		setDrafts(prev => ({ ...prev, [key]: { ...draftFor(key, fallback), ...patch } }));
 	}
 
-	function removeStage(category: string, index: number) {
-		setStagesByCategory(prev => ({ ...prev, [category]: (prev[category] ?? []).filter((_, i) => i !== index) }));
+	function startNewTemplate(category: string) {
+		setDrafts(prev => ({ ...prev, [`new-${category}`]: { name: "", stages: [""] } }));
 	}
 
-	async function saveStages(category: string) {
-		setSaving(true);
+	async function saveTemplate(category: string, existing: StageTemplate | null, key: string) {
+		const draft = draftFor(key, existing ? { name: existing.name, stages: existing.stages } : { name: "", stages: [""] });
+		const stages = draft.stages.map(s => s.trim()).filter(Boolean);
+		if (!draft.name.trim() || stages.length === 0) {
+			setError("A route needs a name and at least one stage.");
+			return;
+		}
+		setSaving(key);
 		setError(null);
 		try {
-			const stages = stagesFor(category).map(s => s.trim()).filter(Boolean);
-			const res = await fetch("/api/category-stages", {
-				method: "PUT",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ category, stages }),
-			});
+			const res = existing
+				? await fetch(`/api/category-stages/${existing.id}`, {
+					method: "PATCH",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({ name: draft.name.trim(), stages }),
+				})
+				: await fetch("/api/category-stages", {
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({ category, name: draft.name.trim(), stages }),
+				});
 			if (!res.ok) {
 				const json = await res.json().catch(() => ({}));
-				setError(json.error || "Couldn't save the stage list.");
+				setError(json.error || "Couldn't save this route.");
 				return;
 			}
-			setStagesByCategory(prev => ({ ...prev, [category]: stages }));
+			setDrafts(prev => { const next = { ...prev }; delete next[key]; return next; });
+			await load();
 		} finally {
-			setSaving(false);
+			setSaving(null);
 		}
+	}
+
+	async function deleteTemplate(id: string) {
+		if (!confirm("Delete this route? Items already using it keep their progress, but no new items can pick it.")) return;
+		await fetch(`/api/category-stages/${id}`, { method: "DELETE" });
+		await load();
 	}
 
 	return (
 		<section className="card card-pad">
 			<h2 className="font-semibold mb-1">Production stages</h2>
 			<p className="text-sm text-muted mb-4">
-				Give a category its own routing through production (e.g. Rigid Boxes: Printing → Die-cutting
-				→ Gluing → QC). Items in that category then show a step-by-step checklist instead of a single
-				status dropdown once they reach Pre Production. A category with no stages here keeps the
-				plain dropdown.
+				Give a category one or more named routes through production (e.g. Rigid Boxes could have a
+				"Standard" route and a "Laminated" route with an extra step). Items in that category show a
+				step-by-step checklist instead of a plain status dropdown once they reach Pre Production —
+				if a category has more than one route, whoever moves the item picks which one applies. A
+				category with no routes here keeps the plain dropdown.
 			</p>
 
 			{error && <div className="alert alert-danger mb-4">{error}</div>}
 
 			<div className="space-y-2">
 				{allCategories.map(category => {
-					const stages = stagesFor(category);
+					const categoryTemplates = templatesFor(category);
 					const isExpanded = expandedCategory === category;
+					const newKey = `new-${category}`;
+					const isAddingNew = newKey in drafts;
 					return (
 						<div key={category} className="border border-line rounded-lg">
 							<button
@@ -353,39 +373,129 @@ function ProductionStagesSection() {
 							>
 								<span className="font-medium">{category}</span>
 								<span className="flex items-center gap-2">
-									<span className="meta">{stages.length > 0 ? `${stages.length} stage${stages.length === 1 ? "" : "s"}` : "No routing"}</span>
+									<span className="meta">
+										{categoryTemplates.length > 0 ? `${categoryTemplates.length} route${categoryTemplates.length === 1 ? "" : "s"}` : "No routing"}
+									</span>
 									<span className="text-muted">{isExpanded ? "▲" : "▼"}</span>
 								</span>
 							</button>
 
 							{isExpanded && (
-								<div className="border-t border-line p-3 space-y-2">
-									{stages.map((stage, i) => (
-										<div key={i} className="flex items-center gap-2">
-											<span className="text-xs text-muted w-5 shrink-0">{i + 1}.</span>
-											<input
-												className="input"
-												value={stage}
-												onChange={(e) => updateStage(category, i, e.target.value)}
-												placeholder={`Stage ${i + 1}`}
-											/>
-											<button
-												type="button"
-												onClick={() => removeStage(category, i)}
-												className="text-danger text-sm shrink-0"
-											>
-												Remove
-											</button>
-										</div>
-									))}
-									<div className="flex gap-2 pt-1">
-										<button type="button" className="btn btn-outline btn-sm" onClick={() => addStage(category)}>
-											+ Add stage
+								<div className="border-t border-line p-3 space-y-3">
+									{categoryTemplates.map(t => {
+										const key = t.id;
+										const draft = draftFor(key, { name: t.name, stages: t.stages });
+										return (
+											<div key={key} className="border border-line rounded-lg p-3 space-y-2 bg-wash">
+												<div className="flex items-center gap-2">
+													<input
+														className="input font-medium"
+														value={draft.name}
+														onChange={(e) => updateDraft(key, { name: t.name, stages: t.stages }, { name: e.target.value })}
+														placeholder="Route name, e.g. Standard"
+													/>
+													<button type="button" onClick={() => deleteTemplate(t.id)} className="text-danger text-sm shrink-0">
+														Delete
+													</button>
+												</div>
+												{draft.stages.map((stage, i) => (
+													<div key={i} className="flex items-center gap-2">
+														<span className="text-xs text-muted w-5 shrink-0">{i + 1}.</span>
+														<input
+															className="input"
+															value={stage}
+															onChange={(e) => {
+																const nextStages = [...draft.stages];
+																nextStages[i] = e.target.value;
+																updateDraft(key, { name: t.name, stages: t.stages }, { stages: nextStages });
+															}}
+															placeholder={`Stage ${i + 1}`}
+														/>
+														<button
+															type="button"
+															onClick={() => updateDraft(key, { name: t.name, stages: t.stages }, { stages: draft.stages.filter((_, si) => si !== i) })}
+															className="text-danger text-sm shrink-0"
+														>
+															Remove
+														</button>
+													</div>
+												))}
+												<div className="flex gap-2 pt-1">
+													<button
+														type="button"
+														className="btn btn-outline btn-sm"
+														onClick={() => updateDraft(key, { name: t.name, stages: t.stages }, { stages: [...draft.stages, ""] })}
+													>
+														+ Add stage
+													</button>
+													<button type="button" className="btn btn-primary btn-sm" onClick={() => saveTemplate(category, t, key)} disabled={saving === key}>
+														{saving === key ? "Saving…" : "Save"}
+													</button>
+												</div>
+											</div>
+										);
+									})}
+
+									{isAddingNew ? (
+										(() => {
+											const draft = draftFor(newKey, { name: "", stages: [""] });
+											return (
+												<div className="border border-line rounded-lg p-3 space-y-2">
+													<input
+														className="input font-medium"
+														value={draft.name}
+														onChange={(e) => updateDraft(newKey, { name: "", stages: [""] }, { name: e.target.value })}
+														placeholder="Route name, e.g. Laminated"
+													/>
+													{draft.stages.map((stage, i) => (
+														<div key={i} className="flex items-center gap-2">
+															<span className="text-xs text-muted w-5 shrink-0">{i + 1}.</span>
+															<input
+																className="input"
+																value={stage}
+																onChange={(e) => {
+																	const nextStages = [...draft.stages];
+																	nextStages[i] = e.target.value;
+																	updateDraft(newKey, { name: "", stages: [""] }, { stages: nextStages });
+																}}
+																placeholder={`Stage ${i + 1}`}
+															/>
+															<button
+																type="button"
+																onClick={() => updateDraft(newKey, { name: "", stages: [""] }, { stages: draft.stages.filter((_, si) => si !== i) })}
+																className="text-danger text-sm shrink-0"
+															>
+																Remove
+															</button>
+														</div>
+													))}
+													<div className="flex gap-2 pt-1">
+														<button
+															type="button"
+															className="btn btn-outline btn-sm"
+															onClick={() => updateDraft(newKey, { name: "", stages: [""] }, { stages: [...draft.stages, ""] })}
+														>
+															+ Add stage
+														</button>
+														<button type="button" className="btn btn-primary btn-sm" onClick={() => saveTemplate(category, null, newKey)} disabled={saving === newKey}>
+															{saving === newKey ? "Saving…" : "Save route"}
+														</button>
+														<button
+															type="button"
+															className="btn btn-ghost btn-sm"
+															onClick={() => setDrafts(prev => { const next = { ...prev }; delete next[newKey]; return next; })}
+														>
+															Cancel
+														</button>
+													</div>
+												</div>
+											);
+										})()
+									) : (
+										<button type="button" className="btn btn-outline btn-sm" onClick={() => startNewTemplate(category)}>
+											+ Add route
 										</button>
-										<button type="button" className="btn btn-primary btn-sm" onClick={() => saveStages(category)} disabled={saving}>
-											{saving ? "Saving…" : "Save"}
-										</button>
-									</div>
+									)}
 								</div>
 							)}
 						</div>

@@ -63,7 +63,10 @@ type DespatchItem = {
 	order: number;
 	specFields?: Record<string, any> | null;
 	stageProgress?: ItemStage[];
+	parentItemId?: string | null;
 };
+
+type StageTemplateLite = { id: string; name: string };
 
 type ProofFile = { url: string; name: string };
 type ProofRequest = {
@@ -410,6 +413,14 @@ function TasksPageInner() {
 		id: string; name: string;
 		fields: { id: string; key: string; label: string; type: "TEXT" | "NUMBER" | "DATE" | "BOOLEAN"; required: boolean }[];
 	}[]>([]);
+	// Production routing (Part 10A/10B): named stage templates per category
+	// (a category can have several -- "Standard" vs "Laminated"), keyed for
+	// quick lookup of how many routes an item's category has. A route-choice
+	// draft per item id (pending confirm), and which top-level item currently
+	// has its "add component" form open.
+	const [templatesByCategory, setTemplatesByCategory] = useState<Record<string, StageTemplateLite[]>>({});
+	const [routeChoiceDraft, setRouteChoiceDraft] = useState<Record<string, string>>({});
+	const [addingComponentToItemId, setAddingComponentToItemId] = useState<string | null>(null);
 	const [customerId, setCustomerId] = useState<string>("");
 	const [users, setUsers] = useState<{ id: string; name: string }[]>([]);
 	const [showNewCustomerForm, setShowNewCustomerForm] = useState(false);
@@ -758,12 +769,13 @@ function TasksPageInner() {
 		// refresh -- collapsing anything the user had expanded.
 		if (tasks.length === 0) setLoading(true);
 		try {
-			const [resTasks, resCustomers, resUsers, resCategories, resTeams] = await Promise.all([
+			const [resTasks, resCustomers, resUsers, resCategories, resTeams, resStages] = await Promise.all([
 				fetch("/api/tasks?limit=100&includeArchived=false&includeQuotations=false"),
 				fetch("/api/customers"),
 				fetch("/api/users"),
 				fetch("/api/categories"),
-				fetch("/api/teams")
+				fetch("/api/teams"),
+				fetch("/api/category-stages")
 			]);
 			
 		if (resTasks.ok) {
@@ -790,6 +802,15 @@ function TasksPageInner() {
 			if (resCategories.ok) {
 				const json = await resCategories.json();
 				setDynamicCategories(json.categories ?? []);
+			}
+
+			if (resStages.ok) {
+				const json = await resStages.json();
+				const map: Record<string, StageTemplateLite[]> = {};
+				for (const t of json.templates ?? []) {
+					(map[t.category] ??= []).push({ id: t.id, name: t.name });
+				}
+				setTemplatesByCategory(map);
 			}
 			
 			if (resUsers.ok) {
@@ -1041,7 +1062,7 @@ function TasksPageInner() {
 		setDespatchDraft(prev => prev.filter((_, i) => i !== index));
 	}
 
-	async function createDespatchItem(taskId: string) {
+	async function createDespatchItem(taskId: string, parentItemId?: string) {
 		if (!newDespatchName.trim() || !newDespatchQuantity.trim()) return;
 
 		const res = await fetch(`/api/tasks/${taskId}/despatch-items`, {
@@ -1053,6 +1074,7 @@ function TasksPageInner() {
 					quantity: Number(newDespatchQuantity),
 					unit: newDespatchUnit.trim() || "pcs",
 					specFields: newDespatchCategory ? { ...newDespatchSpecFields, category: newDespatchCategory } : undefined,
+					parentItemId,
 				}]
 			})
 		});
@@ -1060,6 +1082,7 @@ function TasksPageInner() {
 		if (res.ok) {
 			resetNewDespatchFields();
 			setAddingDespatchItemToTaskId(null);
+			setAddingComponentToItemId(null);
 			load();
 		}
 	}
@@ -1070,12 +1093,118 @@ function TasksPageInner() {
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify({ status })
 		});
-		if (res.ok) load();
+		if (res.ok) {
+			load();
+		} else {
+			const json = await res.json().catch(() => ({}));
+			setError(typeof json.error === "string" ? json.error : "Couldn't update this item's status.");
+		}
 	}
 
 	async function advanceStage(itemId: string) {
 		const res = await fetch(`/api/despatch-items/${itemId}/advance-stage`, { method: "POST" });
-		if (res.ok) load();
+		if (res.ok) {
+			load();
+		} else {
+			const json = await res.json().catch(() => ({}));
+			setError(typeof json.error === "string" ? json.error : "Couldn't advance this item's stage.");
+		}
+	}
+
+	async function chooseRoute(itemId: string, templateId: string) {
+		const res = await fetch(`/api/despatch-items/${itemId}/choose-route`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ templateId }),
+		});
+		if (res.ok) {
+			setRouteChoiceDraft(prev => { const next = { ...prev }; delete next[itemId]; return next; });
+			load();
+		} else {
+			const json = await res.json().catch(() => ({}));
+			setError(typeof json.error === "string" ? json.error : "Couldn't set this item's route.");
+		}
+	}
+
+	// One item's status control -- a "Choose route" picker (category has 2+
+	// named templates and no route picked yet), the stage checklist (route
+	// already chosen), or the plain dropdown (no routing configured for this
+	// category at all). Shared by top-level items and their components,
+	// which use the exact same status pipeline independently.
+	function renderItemStatusControl(item: DespatchItem) {
+		const category = item.specFields?.category as string | undefined;
+		const catTemplates = category ? (templatesByCategory[category] ?? []) : [];
+		const needsRouteChoice = catTemplates.length > 1 && (!item.stageProgress || item.stageProgress.length === 0);
+
+		if (needsRouteChoice) {
+			return (
+				<div className="flex items-center gap-1">
+					<select
+						className="input text-xs py-1 !w-auto"
+						value={routeChoiceDraft[item.id] ?? ""}
+						onChange={(e) => setRouteChoiceDraft(prev => ({ ...prev, [item.id]: e.target.value }))}
+					>
+						<option value="">Choose route…</option>
+						{catTemplates.map(t => (<option key={t.id} value={t.id}>{t.name}</option>))}
+					</select>
+					<button
+						type="button"
+						className="btn btn-outline btn-sm"
+						disabled={!routeChoiceDraft[item.id]}
+						onClick={() => chooseRoute(item.id, routeChoiceDraft[item.id])}
+					>
+						Confirm
+					</button>
+				</div>
+			);
+		}
+
+		if (item.stageProgress && item.stageProgress.length > 0) {
+			const next = item.stageProgress.find(s => !s.completedAt);
+			return (
+				<div className="flex flex-wrap items-center gap-1">
+					{item.stageProgress.map((stage, si) => {
+						const isNext = !stage.completedAt && (si === 0 || !!item.stageProgress![si - 1].completedAt);
+						return (
+							<span
+								key={stage.id}
+								className={stage.completedAt ? "chip chip-ok" : isNext ? "chip chip-info" : "chip chip-plain"}
+								title={stage.completedAt ? `Completed ${new Date(stage.completedAt).toLocaleString()}` : stage.stageName}
+							>
+								{stage.completedAt ? "✓ " : ""}{stage.stageName}
+							</span>
+						);
+					})}
+					{next ? (
+						<button type="button" className="btn btn-outline btn-sm" onClick={() => advanceStage(item.id)}>
+							Mark &quot;{next.stageName}&quot; done
+						</button>
+					) : item.status !== "PACKED" && item.status !== "DESPATCHED" ? (
+						// All stages checked off, but the item hasn't actually
+						// advanced yet -- either a normal one-click confirmation,
+						// or (if this item has components) a retry that will keep
+						// failing with a clear reason until they're all Despatched.
+						<button type="button" className="btn btn-outline btn-sm" onClick={() => updateDespatchItemStatus(item.id, "PACKED")}>
+							Mark Packed
+						</button>
+					) : null}
+				</div>
+			);
+		}
+
+		return (
+			<select
+				className={`input text-xs py-1 !w-auto ${itemStatusChipClass(item.status)}`}
+				value={item.status}
+				onChange={(e) => updateDespatchItemStatus(item.id, e.target.value as DespatchItem["status"])}
+			>
+				<option value="PENDING_CLIENT_APPROVAL">Pending Client Approval</option>
+				<option value="PRE_PRODUCTION">Pre Production</option>
+				<option value="PRODUCTION">Production</option>
+				<option value="PACKED">Packed</option>
+				<option value="DESPATCHED">Despatched</option>
+			</select>
+		);
 	}
 
 	async function deleteDespatchItem(itemId: string) {
@@ -2697,11 +2826,14 @@ function TasksPageInner() {
 										<div className="flex flex-wrap items-center justify-between gap-2 mb-3">
 											<h4 className="text-sm font-medium">
 												Items
-												{t.despatchItems && t.despatchItems.length > 0 && (
-													<span className="text-xs text-muted ml-2">
-														{t.despatchItems.filter(i => i.status === "DESPATCHED").length}/{t.despatchItems.length} despatched
-													</span>
-												)}
+												{(() => {
+													const topLevel = (t.despatchItems ?? []).filter(i => !i.parentItemId);
+													return topLevel.length > 0 && (
+														<span className="text-xs text-muted ml-2">
+															{topLevel.filter(i => i.status === "DESPATCHED").length}/{topLevel.length} despatched
+														</span>
+													);
+												})()}
 											</h4>
 											<button
 												type="button"
@@ -2740,9 +2872,9 @@ function TasksPageInner() {
 											</form>
 										)}
 
-										{t.despatchItems && t.despatchItems.length > 0 ? (
+										{t.despatchItems && t.despatchItems.filter(i => !i.parentItemId).length > 0 ? (
 											<div className="space-y-2">
-												{t.despatchItems.map((item) => (
+												{t.despatchItems.filter(i => !i.parentItemId).map((item) => (
 													<div key={item.id} className="p-2.5 border border-gray-200 rounded bg-white">
 														{editingDespatchItemId === item.id ? (
 															<form
@@ -2794,42 +2926,7 @@ function TasksPageInner() {
 																	)}
 																</div>
 																<div className="flex items-center gap-2">
-																	{item.stageProgress && item.stageProgress.length > 0 ? (
-																		<div className="flex flex-wrap items-center gap-1">
-																			{item.stageProgress.map((stage, si) => {
-																				const isNext = !stage.completedAt && (si === 0 || !!item.stageProgress![si - 1].completedAt);
-																				return (
-																					<span
-																						key={stage.id}
-																						className={stage.completedAt ? "chip chip-ok" : isNext ? "chip chip-info" : "chip chip-plain"}
-																						title={stage.completedAt ? `Completed ${new Date(stage.completedAt).toLocaleString()}` : stage.stageName}
-																					>
-																						{stage.completedAt ? "✓ " : ""}{stage.stageName}
-																					</span>
-																				);
-																			})}
-																			{(() => {
-																				const next = item.stageProgress.find(s => !s.completedAt);
-																				return next ? (
-																					<button type="button" className="btn btn-outline btn-sm" onClick={() => advanceStage(item.id)}>
-																						Mark &quot;{next.stageName}&quot; done
-																					</button>
-																				) : null;
-																			})()}
-																		</div>
-																	) : (
-																		<select
-																			className={`input text-xs py-1 !w-auto ${itemStatusChipClass(item.status)}`}
-																			value={item.status}
-																			onChange={(e) => updateDespatchItemStatus(item.id, e.target.value as DespatchItem["status"])}
-																		>
-																			<option value="PENDING_CLIENT_APPROVAL">Pending Client Approval</option>
-																			<option value="PRE_PRODUCTION">Pre Production</option>
-																			<option value="PRODUCTION">Production</option>
-																			<option value="PACKED">Packed</option>
-																			<option value="DESPATCHED">Despatched</option>
-																		</select>
-																	)}
+																		{renderItemStatusControl(item)}
 																	<button
 																		type="button"
 																		onClick={() => startEditDespatchItem(item)}
@@ -2847,6 +2944,59 @@ function TasksPageInner() {
 																</div>
 															</div>
 														)}
+															{!item.parentItemId && (() => {
+																const myComponents = (t.despatchItems ?? []).filter(c => c.parentItemId === item.id);
+																return (
+																	<div className="mt-2 pl-4 border-l-2 border-line space-y-2">
+																		{myComponents.map(comp => (
+																			<div key={comp.id} className="flex flex-wrap items-center justify-between gap-2 p-2 bg-wash rounded">
+																				<span className="text-xs">{comp.name} — {comp.quantity} {comp.unit}{comp.specFields?.category ? ` · ${comp.specFields.category}` : ""}</span>
+																				<div className="flex items-center gap-1">
+																					{renderItemStatusControl(comp)}
+																					<button
+																						type="button"
+																						onClick={() => deleteDespatchItem(comp.id)}
+																						className="text-xs px-2 py-1 rounded border text-red-600 hover:text-red-800 hover:bg-red-50"
+																					>
+																						Delete
+																					</button>
+																				</div>
+																			</div>
+																		))}
+																		{addingComponentToItemId === item.id ? (
+																			<form
+																				onSubmit={(e) => { e.preventDefault(); createDespatchItem(t.id, item.id); }}
+																				className="space-y-2 p-2 border border-line rounded-lg bg-white"
+																			>
+																				<div className="flex flex-wrap gap-2">
+																					<select className="input flex-1 min-w-[8rem] text-xs" value={newDespatchCategory} onChange={(e) => setNewDespatchCategory(e.target.value)}>
+																						<option value="">Select type</option>
+																						{BUILT_IN_ITEM_CATEGORIES.map(c => (<option key={c} value={c}>{c}</option>))}
+																						{dynamicCategories.map(c => (<option key={c.id} value={c.name}>{c.name}</option>))}
+																					</select>
+																					<input className="input flex-[2] min-w-[8rem] text-xs" placeholder="Component name" value={newDespatchName} onChange={(e) => setNewDespatchName(e.target.value)} required />
+																					<div className="flex gap-1 flex-1 min-w-[8rem]">
+																						<input className="input text-xs" type="number" min="0" step="any" placeholder="Qty" value={newDespatchQuantity} onChange={(e) => setNewDespatchQuantity(e.target.value)} required />
+																						<input className="input text-xs" placeholder="Unit" value={newDespatchUnit} onChange={(e) => setNewDespatchUnit(e.target.value)} />
+																					</div>
+																				</div>
+																				<div className="flex gap-2">
+																					<button type="submit" className="btn btn-accent btn-sm">Add</button>
+																					<button type="button" className="btn btn-outline btn-sm" onClick={() => { setAddingComponentToItemId(null); resetNewDespatchFields(); }}>Cancel</button>
+																				</div>
+																			</form>
+																		) : (
+																			<button
+																				type="button"
+																				className="text-xs px-2 py-1 rounded border"
+																				onClick={() => { setAddingComponentToItemId(item.id); resetNewDespatchFields(); }}
+																			>
+																				+ Add component
+																			</button>
+																		)}
+																	</div>
+																);
+															})()}
 													</div>
 												))}
 											</div>

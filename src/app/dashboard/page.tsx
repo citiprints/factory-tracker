@@ -149,14 +149,14 @@ function CalendarView({ tasks, isAdmin }: { tasks: Task[]; isAdmin: boolean }) {
 							key={i}
 							type="button"
 							onClick={() => setSelectedDay(dayTasks.length > 0 ? day : null)}
-							className={`aspect-square rounded-lg text-xs flex flex-col items-center justify-center gap-0.5 transition-colors ${
+							className={`h-9 rounded-lg text-xs flex flex-col items-center justify-center gap-1 transition-colors ${
 								isSelected ? "bg-accent text-white" : isToday ? "border border-accent" : "hover:bg-wash"
 							} ${!inMonth ? "opacity-30" : ""}`}
 						>
 							<span>{day.getDate()}</span>
-							{dayTasks.length > 0 && (
-								<span className={`w-1.5 h-1.5 rounded-full ${isSelected ? "bg-white" : overdue ? "bg-danger" : "bg-accent"}`} />
-							)}
+							<span
+								className={`w-2 h-2 rounded-full ${dayTasks.length === 0 ? "opacity-0" : isSelected ? "bg-white" : overdue ? "bg-danger" : "bg-accent"}`}
+							/>
 						</button>
 					);
 				})}

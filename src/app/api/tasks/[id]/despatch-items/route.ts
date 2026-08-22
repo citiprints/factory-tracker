@@ -13,6 +13,7 @@ const CreateDespatchItemsSchema = z.object({
 			status: z.enum(DESPATCH_ITEM_STATUSES).optional(),
 			order: z.number().int().optional(),
 			specFields: z.record(z.string(), z.any()).optional(),
+			parentItemId: z.string().optional(),
 		})
 	).min(1),
 });
@@ -47,6 +48,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 						status: (item.status as any) ?? "PENDING_CLIENT_APPROVAL",
 						order: item.order ?? index,
 						specFields: item.specFields ? JSON.stringify(item.specFields) : undefined,
+						parentItemId: item.parentItemId,
 					},
 				})
 			)

@@ -8,56 +8,50 @@ export async function GET() {
 	const user = await getCurrentUser();
 	if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-	const rows = await prisma.categoryStageTemplate.findMany({ orderBy: { category: "asc" } });
-	const templates = rows.map((r) => ({ category: r.category, stages: JSON.parse(r.stages) as string[] }));
+	const rows = await prisma.categoryStageTemplate.findMany({ orderBy: [{ category: "asc" }, { name: "asc" }] });
+	const templates = rows.map((r) => ({ id: r.id, category: r.category, name: r.name, stages: JSON.parse(r.stages) as string[] }));
 
 	return NextResponse.json({ templates });
 }
 
-const UpsertSchema = z.object({
+const CreateSchema = z.object({
 	category: z.string().min(1),
-	stages: z.array(z.string().min(1)),
+	name: z.string().min(1),
+	stages: z.array(z.string().min(1)).min(1),
 });
 
-// Empty stages array deletes the template -- a category can opt back out of
-// routing entirely, going back to the plain status dropdown for its items.
-export async function PUT(request: Request) {
+// Creates a new named route for a category -- a category can have several
+// (e.g. "Standard" vs "Laminated") for jobs of the same category that take
+// different real paths through production.
+export async function POST(request: Request) {
 	const user = await getCurrentUser();
 	if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 	if (!isAdmin(user)) return NextResponse.json({ error: "Admins only." }, { status: 403 });
 
 	try {
 		const json = await request.json();
-		const data = UpsertSchema.parse(json);
+		const data = CreateSchema.parse(json);
 
-		if (data.stages.length === 0) {
-			await prisma.categoryStageTemplate.deleteMany({ where: { category: data.category } });
-			await logActivity({
-				entityType: "category_stage_template",
-				entityId: data.category,
-				action: "DELETED",
-				actorId: user.id,
-			});
-			return NextResponse.json({ template: null });
+		const existing = await prisma.categoryStageTemplate.findUnique({
+			where: { category_name: { category: data.category, name: data.name } },
+		});
+		if (existing) {
+			return NextResponse.json({ error: `"${data.name}" already exists for ${data.category}.` }, { status: 409 });
 		}
 
-		const existing = await prisma.categoryStageTemplate.findUnique({ where: { category: data.category } });
-		const template = await prisma.categoryStageTemplate.upsert({
-			where: { category: data.category },
-			create: { category: data.category, stages: JSON.stringify(data.stages) },
-			update: { stages: JSON.stringify(data.stages) },
+		const template = await prisma.categoryStageTemplate.create({
+			data: { category: data.category, name: data.name, stages: JSON.stringify(data.stages) },
 		});
 
 		await logActivity({
 			entityType: "category_stage_template",
-			entityId: data.category,
-			action: existing ? "UPDATED" : "CREATED",
+			entityId: template.id,
+			action: "CREATED",
 			actorId: user.id,
-			before: existing ? { stages: JSON.parse(existing.stages) } : undefined,
-			after: { stages: data.stages },
+			after: { category: data.category, name: data.name, stages: data.stages },
 		});
 
-		return NextResponse.json({ template: { category: template.category, stages: data.stages } });
+		return NextResponse.json({ template: { id: template.id, category: template.category, name: template.name, stages: data.stages } }, { status: 201 });
 	} catch (error) {
 		if (error instanceof z.ZodError) {
 			return NextResponse.json({ error: error.flatten() }, { status: 400 });

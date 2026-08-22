@@ -42,19 +42,32 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
 	});
 
 	const isLastStage = next.stageIndex === stages.length - 1;
+	let autoAdvanced = false;
 	if (isLastStage && despatchItem && despatchItem.status !== "PACKED" && despatchItem.status !== "DESPATCHED") {
-		await prisma.despatchItem.update({ where: { id }, data: { status: "PACKED" } });
-		await logActivity({
-			entityType: "despatch_item",
-			entityId: id,
-			action: "STATUS_CHANGE",
-			actorId: user.id,
-			taskId: despatchItem.taskId,
-			before: { status: despatchItem.status },
-			after: { status: "PACKED" },
+		// Same assembly gate as the PATCH route: a parent with incomplete
+		// components finishes its own checklist here, but doesn't auto-advance
+		// to Packed until they catch up. The UI offers a "Mark Packed" retry
+		// once all stages are done, which re-runs this same check.
+		const components = await prisma.despatchItem.findMany({
+			where: { parentItemId: id },
+			select: { status: true },
 		});
-		await maybeArchiveTask(despatchItem.taskId);
+		const blocked = components.some((c) => c.status !== "DESPATCHED");
+		if (!blocked) {
+			await prisma.despatchItem.update({ where: { id }, data: { status: "PACKED" } });
+			await logActivity({
+				entityType: "despatch_item",
+				entityId: id,
+				action: "STATUS_CHANGE",
+				actorId: user.id,
+				taskId: despatchItem.taskId,
+				before: { status: despatchItem.status },
+				after: { status: "PACKED" },
+			});
+			await maybeArchiveTask(despatchItem.taskId);
+			autoAdvanced = true;
+		}
 	}
 
-	return NextResponse.json({ stage: updated, isLastStage });
+	return NextResponse.json({ stage: updated, isLastStage, autoAdvanced });
 }
