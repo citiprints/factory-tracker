@@ -19,6 +19,7 @@ type TaskPaymentRow = {
 };
 
 type Summary = { totalBilled: number; totalReceived: number; totalOutstanding: number };
+type RevenuePeriod = { period: string; total: number; count: number };
 
 const STATUS_LABELS: Record<PaymentStatus, string> = {
 	NOT_SET: "Not set",
@@ -36,6 +37,87 @@ const STATUS_CHIP_CLASS: Record<PaymentStatus, string> = {
 
 function formatCurrency(n: number): string {
 	return `₹${n.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
+}
+
+function formatPeriodLabel(period: string, groupBy: "month" | "year"): string {
+	if (groupBy === "year") return period;
+	const [year, month] = period.split("-").map(Number);
+	return new Date(year, month - 1, 1).toLocaleDateString(undefined, { month: "short", year: "numeric" });
+}
+
+function RevenueSection() {
+	const [groupBy, setGroupBy] = useState<"month" | "year">("month");
+	const [periods, setPeriods] = useState<RevenuePeriod[]>([]);
+	const [loading, setLoading] = useState(true);
+	const [error, setError] = useState<string | null>(null);
+
+	useEffect(() => {
+		setLoading(true);
+		setError(null);
+		fetch(`/api/payments/revenue?groupBy=${groupBy}`)
+			.then(async (r) => {
+				if (!r.ok) {
+					const json = await r.json().catch(() => ({}));
+					setError(json.error || "Couldn't load revenue.");
+					return;
+				}
+				const json = await r.json();
+				setPeriods(json.periods ?? []);
+			})
+			.catch(() => setError("Couldn't load revenue. Check your connection and try again."))
+			.finally(() => setLoading(false));
+	}, [groupBy]);
+
+	// Most recent 12 periods, newest last (bars read left-to-right chronologically).
+	const shown = periods.slice(-12);
+	const maxTotal = Math.max(1, ...shown.map(p => p.total));
+
+	return (
+		<section className="card card-pad space-y-3">
+			<div className="flex items-center justify-between gap-2">
+				<h2 className="font-semibold">Revenue over time</h2>
+				<div className="flex gap-1">
+					<button
+						type="button"
+						className={groupBy === "month" ? "btn btn-primary btn-sm" : "btn btn-outline btn-sm"}
+						onClick={() => setGroupBy("month")}
+					>
+						Monthly
+					</button>
+					<button
+						type="button"
+						className={groupBy === "year" ? "btn btn-primary btn-sm" : "btn btn-outline btn-sm"}
+						onClick={() => setGroupBy("year")}
+					>
+						Yearly
+					</button>
+				</div>
+			</div>
+
+			{error && <div className="alert alert-danger">{error}</div>}
+
+			{loading ? (
+				<div className="skeleton h-32 w-full" />
+			) : shown.length === 0 ? (
+				<EmptyState title="No payments recorded yet" hint="Revenue will show up here once payments come in." />
+			) : (
+				<div className="space-y-1.5">
+					{shown.map(p => (
+						<div key={p.period} className="flex items-center gap-3">
+							<div className="w-16 shrink-0 text-xs text-muted text-right">{formatPeriodLabel(p.period, groupBy)}</div>
+							<div className="flex-1 h-5 rounded bg-wash overflow-hidden">
+								<div
+									className="h-full rounded bg-[var(--accent)]"
+									style={{ width: `${Math.max(2, (p.total / maxTotal) * 100)}%` }}
+								/>
+							</div>
+							<div className="w-24 shrink-0 text-xs text-right">{formatCurrency(p.total)}</div>
+						</div>
+					))}
+				</div>
+			)}
+		</section>
+	);
 }
 
 export default function PaymentsPage() {
@@ -148,6 +230,8 @@ export default function PaymentsPage() {
 							</div>
 						</div>
 					)}
+
+					<RevenueSection />
 
 					<div className="flex flex-wrap items-end gap-3">
 						<div>

@@ -585,6 +585,33 @@ function TasksPageInner() {
 	// payments panel shut) on every background auto-refresh once it's
 	// already handled a given ?open=&showPayments= combination.
 	const handledDeepLinkRef = useRef<string | null>(null);
+	// Guards the standalone-task fallback fetch below from retrying forever
+	// once it's tried (successfully or not) for a given id.
+	const fetchedStandaloneTaskRef = useRef<string | null>(null);
+
+	// A deep-linked task that isn't archived-excluded-by-default in the main
+	// list (e.g. opened from /archive) never shows up in `tasks`, so the
+	// deep-link effect below would silently do nothing. Once the main list
+	// has finished its first load, if the requested id still isn't present,
+	// fetch it directly and splice it in -- reuses every existing render path
+	// (Items, Payments, Comments, Onboarding, Proof) instead of duplicating
+	// them in a second, view-only copy the way the old Archive page did.
+	useEffect(() => {
+		const openId = searchParams.get("open");
+		if (!openId || loading) return;
+		if (tasks.some((t) => t.id === openId)) return;
+		if (fetchedStandaloneTaskRef.current === openId) return;
+		fetchedStandaloneTaskRef.current = openId;
+
+		fetch(`/api/tasks/${openId}`)
+			.then((r) => (r.ok ? r.json() : null))
+			.then((json) => {
+				if (!json?.task) return;
+				setTasks((prev) => (prev.some((t) => t.id === openId) ? prev : [...prev, transformTask(json.task)]));
+			})
+			.catch(() => {});
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [searchParams, loading, tasks.length]);
 
 	// Deep-link support: /tasks?open=<taskId> (used by Dashboard's
 	// "Upcoming Deadlines" links) opens that task's detail view once
@@ -694,6 +721,24 @@ function TasksPageInner() {
 		}
 	}
 
+	// Shared shape-normalizing step for a raw task straight from the API
+	// (parse specFields/customFields JSON strings, derive onboardingStatus) --
+	// used both by the main list load() below and by the single-task fallback
+	// fetch for a deep-linked task that isn't part of the active list (e.g.
+	// an archived task opened from /archive).
+	function transformTask(t: any): Task {
+		return {
+			...t,
+			subtasks: t.subtasks ?? [],
+			despatchItems: (t.despatchItems ?? []).map((d: any) => ({
+				...d,
+				specFields: typeof d.specFields === "string" ? (() => { try { return JSON.parse(d.specFields); } catch { return {}; } })() : (d.specFields || {})
+			})),
+			onboardingStatus: t.onboardingForms?.[0]?.status ?? null,
+			customFields: typeof t.customFields === "string" ? (() => { try { return JSON.parse(t.customFields); } catch { return {}; } })() : (t.customFields || {})
+		};
+	}
+
 	async function load() {
 		// Only show the skeleton on the very first load (nothing on screen
 		// yet). Auto-refresh and "Refresh now" reuse this same function, and
@@ -712,17 +757,18 @@ function TasksPageInner() {
 			
 		if (resTasks.ok) {
 			const json = await resTasks.json();
-				const loaded: Task[] = (json.tasks ?? []).map((t: any) => ({
-					...t,
-					subtasks: t.subtasks ?? [],
-					despatchItems: (t.despatchItems ?? []).map((d: any) => ({
-						...d,
-						specFields: typeof d.specFields === "string" ? (() => { try { return JSON.parse(d.specFields); } catch { return {}; } })() : (d.specFields || {})
-					})),
-					onboardingStatus: t.onboardingForms?.[0]?.status ?? null,
-					customFields: typeof t.customFields === "string" ? (() => { try { return JSON.parse(t.customFields); } catch { return {}; } })() : (t.customFields || {})
-				}));
-				setTasks(loaded);
+				const loaded: Task[] = (json.tasks ?? []).map(transformTask);
+				// The active-tasks list excludes archived tasks by design, but a
+				// deep-linked archived task (see the standalone-fetch effect
+				// below) was spliced in outside this fetch -- keep it across a
+				// refresh instead of having it silently vanish again every
+				// ~2 minutes while someone's still looking at it.
+				const openId = searchParams.get("open");
+				setTasks(prev => {
+					if (!openId || loaded.some(t => t.id === openId)) return loaded;
+					const standalone = prev.find(t => t.id === openId);
+					return standalone ? [...loaded, standalone] : loaded;
+				});
 			}
 			
 			if (resCustomers.ok) {

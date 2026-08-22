@@ -61,6 +61,20 @@ export async function GET(
 				teamAssignments: {
 					include: { team: { select: { id: true, name: true } } },
 				},
+				// Same shape as the list route (src/app/api/tasks/route.ts) --
+				// needed so a task fetched individually (e.g. an archived task
+				// deep-linked from /archive) renders identically to one loaded
+				// as part of the normal list, instead of missing its items and
+				// onboarding badge.
+				despatchItems: {
+					orderBy: { order: "asc" }
+				},
+				onboardingForms: {
+					where: { status: { not: "REVOKED" } },
+					orderBy: { createdAt: "desc" },
+					take: 1,
+					select: { status: true }
+				},
 			},
 		});
 
