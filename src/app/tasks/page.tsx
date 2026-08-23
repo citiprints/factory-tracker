@@ -368,11 +368,25 @@ type ItemFlowNodeState = "done" | "current" | "pending-choice" | "not-reached";
 type ItemFlowNodeData = { name: string; state: ItemFlowNodeState; onCheck?: () => void };
 
 const ItemFlowNode = memo(function ItemFlowNode({ data }: { data: ItemFlowNodeData }) {
+	// onClick, not onChange -- React Flow's pointer handling calls
+	// preventDefault() on mousedown as part of its own gesture
+	// disambiguation (drag-vs-click-vs-pan), even with dragging/panning
+	// switched off. That suppresses a checkbox's *native* toggle-on-click
+	// action, which means the 'change' event this checkbox would otherwise
+	// rely on never fires at all -- clicking it silently does nothing, no
+	// error, since there's nothing to report a change to. The checkbox is
+	// already fully controlled by `checked` below, so the native toggle was
+	// never actually needed; 'click' itself still fires regardless of
+	// whether its default action was suppressed, so reacting to that
+	// instead sidesteps the whole problem.
+	function handleClick() {
+		data.onCheck?.();
+	}
 	return (
 		<div className={`item-flow-node item-flow-node-${data.state}`}>
 			<Handle type="target" position={Position.Left} />
-			<label className="item-flow-node-label nodrag nopan">
-				<input type="checkbox" className="nodrag nopan" checked={data.state === "done"} disabled={!data.onCheck} onChange={data.onCheck ?? undefined} />
+			<label className="item-flow-node-label nodrag nopan" onClick={handleClick}>
+				<input type="checkbox" className="nodrag nopan" checked={data.state === "done"} disabled={!data.onCheck} readOnly />
 				<span>{data.name}</span>
 			</label>
 			<Handle type="source" position={Position.Right} />
