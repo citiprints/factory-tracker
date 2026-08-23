@@ -12,6 +12,7 @@ import {
 	ReactFlowProvider,
 	applyNodeChanges,
 	applyEdgeChanges,
+	ConnectionMode,
 	type Node,
 	type Edge,
 	type Connection,
@@ -416,11 +417,16 @@ const RouteFlowEditor = memo(function RouteFlowEditor({ draft, templateKey, onCh
 		const updated = applyEdgeChanges(changes, currentRfEdges);
 		onChange(templateKey, { ...d, edges: updated.map(e => ({ id: e.id, fromNodeId: e.source, toNodeId: e.target, label: ((e as Edge).label as string) ?? null })) });
 	}, [onChange, templateKey]);
+	// No blocking window.prompt() here -- a synchronous native dialog fired
+	// from inside a React Flow connection callback is fragile (can throw or
+	// be silently blocked depending on how the page is embedded/previewed),
+	// and doing so left the connection gesture looking like it "did nothing"
+	// even though the drag itself completed correctly. Labels are cosmetic
+	// only (not used by routing logic) so they're just skipped on connect.
 	const onConnect = useCallback((connection: Connection) => {
 		if (!connection.source || !connection.target || connection.source === connection.target) return;
-		const label = window.prompt("Label this branch (optional):", "");
 		const d = draftRef.current;
-		onChange(templateKey, { ...d, edges: [...d.edges, { id: newNodeId(), fromNodeId: connection.source, toNodeId: connection.target, label: label || null }] });
+		onChange(templateKey, { ...d, edges: [...d.edges, { id: newNodeId(), fromNodeId: connection.source, toNodeId: connection.target, label: null }] });
 	}, [onChange, templateKey]);
 	const addNode = useCallback(() => {
 		const d = draftRef.current;
@@ -439,6 +445,7 @@ const RouteFlowEditor = memo(function RouteFlowEditor({ draft, templateKey, onCh
 						onNodesChange={onNodesChange}
 						onEdgesChange={onEdgesChange}
 						onConnect={onConnect}
+						connectionMode={ConnectionMode.Loose}
 						fitView
 						proOptions={{ hideAttribution: true }}
 					>

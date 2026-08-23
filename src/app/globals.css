@@ -382,6 +382,13 @@ html[data-theme="dark"] {
   }
 
   /* ---- Route builder canvas (Settings -> Production stages) ------------- */
+  /* Fixed, deterministic size (not intrinsic/content-based) -- this must
+     exactly match the width/height declared on each React Flow node object
+     in settings/page.tsx. React Flow treats an explicit node width/height
+     as authoritative and does not re-measure it via ResizeObserver, so any
+     mismatch between the declared size and the real rendered size throws
+     off where connection handles are registered internally vs. where they
+     visually appear, breaking drag-to-connect. */
   .stage-flow-node {
     display: flex;
     align-items: center;
@@ -391,6 +398,9 @@ html[data-theme="dark"] {
     border: 1px solid var(--line-strong);
     background: var(--surface);
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+    width: 180px;
+    height: 44px;
+    box-sizing: border-box;
   }
   .stage-flow-node-start {
     border-color: var(--accent);
@@ -405,7 +415,8 @@ html[data-theme="dark"] {
     color: var(--accent);
   }
   .stage-flow-node-input {
-    width: 7rem;
+    flex: 1;
+    min-width: 0;
     font-size: 0.78rem;
     border: none;
     background: transparent;
