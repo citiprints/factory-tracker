@@ -57,14 +57,39 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 				await tx.categoryStageTemplate.update({ where: { id }, data: { name: data.name } });
 			}
 			if (data.nodes) {
+				// Edges have no independent identity worth preserving -- always
+				// fully replaced. Nodes are different: an in-progress item's
+				// ItemStageProgress.nodeId points at a specific node row, with no
+				// FK (so template edits never breaks it outright), but the live
+				// routing logic (productionRouting.ts) looks that id up to find
+				// what comes next -- so blindly deleting and recreating every
+				// node on every save (even a pure rename or drag-reposition)
+				// orphaned that reference, silently breaking in-progress items'
+				// join/branch logic. Existing node ids (real cuids already in
+				// this template) are updated in place instead; only ids not
+				// already in the DB (freshly added nodes, client-generated temp
+				// ids) get created, and only nodes actually removed get deleted.
 				await tx.stageEdge.deleteMany({ where: { templateId: id } });
-				await tx.stageNode.deleteMany({ where: { templateId: id } });
+				const existingIds = new Set((await tx.stageNode.findMany({ where: { templateId: id }, select: { id: true } })).map((n) => n.id));
+				const incomingIds = new Set(data.nodes.map((n) => n.id));
+				const removedIds = [...existingIds].filter((nid) => !incomingIds.has(nid));
+				if (removedIds.length > 0) {
+					await tx.stageNode.deleteMany({ where: { id: { in: removedIds } } });
+				}
 				const idMap = new Map<string, string>();
 				for (const n of data.nodes) {
-					const node = await tx.stageNode.create({
-						data: { templateId: id, name: n.name, posX: n.posX, posY: n.posY, isStart: n.isStart, branchType: n.branchType },
-					});
-					idMap.set(n.id, node.id);
+					if (existingIds.has(n.id)) {
+						await tx.stageNode.update({
+							where: { id: n.id },
+							data: { name: n.name, posX: n.posX, posY: n.posY, isStart: n.isStart, branchType: n.branchType },
+						});
+						idMap.set(n.id, n.id);
+					} else {
+						const node = await tx.stageNode.create({
+							data: { templateId: id, name: n.name, posX: n.posX, posY: n.posY, isStart: n.isStart, branchType: n.branchType },
+						});
+						idMap.set(n.id, node.id);
+					}
 				}
 				for (const e of data.edges ?? []) {
 					await tx.stageEdge.create({
