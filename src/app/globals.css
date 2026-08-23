@@ -479,6 +479,13 @@ html[data-theme="dark"] {
     gap: 0.4rem;
     width: 100%;
     cursor: pointer;
+    /* React Flow sets pointer-events:none inline on .react-flow__node
+       whenever nodesDraggable/nodesConnectable/elementsSelectable are all
+       false (true here), so the browser's hit-test skips the node entirely
+       and resolves every click to the pane behind it instead -- clicks look
+       like they do nothing. !important is required to win against that
+       inline style. */
+    pointer-events: auto !important;
   }
   .item-flow-node-not-reached .item-flow-node-label,
   .item-flow-node-not-reached input[type="checkbox"] {
