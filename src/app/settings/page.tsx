@@ -576,8 +576,12 @@ function ProductionStagesSection() {
 				setError(typeof json.error === "string" ? json.error : "Couldn't save this route.");
 				return;
 			}
-			setDrafts(prev => { const next = { ...prev }; delete next[key]; return next; });
+			// Refresh `templates` from the server BEFORE clearing the local
+			// draft, not after -- clearing first drops back to the stale
+			// pre-save `templates` fallback for the brief window until load()
+			// resolves, which looked like the save had reverted the edit.
 			await load();
+			setDrafts(prev => { const next = { ...prev }; delete next[key]; return next; });
 		} finally {
 			setSaving(null);
 		}
