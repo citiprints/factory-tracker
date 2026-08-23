@@ -3,7 +3,8 @@ import { useEffect, useState } from "react";
 import { useCurrentUser } from "../UserContext";
 import { PageHeader, EmptyState } from "@/components/ui";
 import { BUILT_IN_ITEM_CATEGORIES } from "@/lib/constants";
-import ReactFlow, {
+import {
+	ReactFlow,
 	Background,
 	Controls,
 	Handle,
@@ -16,8 +17,8 @@ import ReactFlow, {
 	type Connection,
 	type NodeChange,
 	type EdgeChange,
-} from "reactflow";
-import "reactflow/dist/style.css";
+} from "@xyflow/react";
+import "@xyflow/react/dist/style.css";
 
 type CategoryField = {
 	id: string;
@@ -331,16 +332,16 @@ function StageFlowNode({ id, data }: any) {
 				type="button"
 				title="Set as start stage"
 				onClick={() => data.onToggleStart(id)}
-				className="stage-flow-node-star"
+				className="stage-flow-node-star nodrag nopan"
 			>
 				★
 			</button>
 			<input
-				className="stage-flow-node-input"
+				className="stage-flow-node-input nodrag"
 				value={data.name}
 				onChange={(e) => data.onRename(id, e.target.value)}
 			/>
-			<button type="button" title="Delete stage" onClick={() => data.onDelete(id)} className="stage-flow-node-delete">
+			<button type="button" title="Delete stage" onClick={() => data.onDelete(id)} className="stage-flow-node-delete nodrag nopan">
 				×
 			</button>
 			<Handle type="source" position={Position.Right} />
@@ -369,6 +370,11 @@ function RouteFlowEditor({ draft, onChange }: { draft: RouteDraft; onChange: (d:
 		id: n.id,
 		type: "stage",
 		position: { x: n.posX, y: n.posY },
+		// Explicit width/height so React Flow can render immediately instead
+		// of waiting on a ResizeObserver measurement pass (which can get
+		// stuck leaving nodes permanently invisible in some environments).
+		width: 180,
+		height: 44,
 		data: { name: n.name, isStart: n.isStart, onRename, onToggleStart, onDelete },
 	}));
 	const rfEdges: Edge[] = draft.edges.map(e => ({ id: e.id, source: e.fromNodeId, target: e.toNodeId, label: e.label ?? undefined }));
@@ -385,7 +391,7 @@ function RouteFlowEditor({ draft, onChange }: { draft: RouteDraft; onChange: (d:
 	}
 	function onEdgesChange(changes: EdgeChange[]) {
 		const updated = applyEdgeChanges(changes, rfEdges);
-		onChange({ ...draft, edges: updated.map(e => ({ id: e.id, fromNodeId: e.source, toNodeId: e.target, label: (e.label as string) ?? null })) });
+		onChange({ ...draft, edges: updated.map(e => ({ id: e.id, fromNodeId: e.source, toNodeId: e.target, label: ((e as Edge).label as string) ?? null })) });
 	}
 	function onConnect(connection: Connection) {
 		if (!connection.source || !connection.target || connection.source === connection.target) return;
