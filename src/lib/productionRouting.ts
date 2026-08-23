@@ -213,6 +213,44 @@ export async function chooseBranch(despatchItemId: string, edgeId: string) {
 	await activateNode(despatchItemId, edge.toNodeId);
 }
 
+// Reverses one step of progress on a stage: a completed stage reverts to
+// in-progress (not done, but still reachable -- someone still has to
+// re-tick it); an in-progress stage that was reached via a choice or an AND
+// fan-out is removed outright, putting the node back to however it looked
+// before it was ever activated. Either way, anything that was only reachable
+// *because* of this stage is rolled back too -- but only if none of it has
+// itself been completed yet, since undoing past real, finished work would
+// silently destroy history instead of just correcting a misclick.
+export async function undoStage(despatchItemId: string, progressId: string) {
+	const row = await prisma.itemStageProgress.findUnique({ where: { id: progressId } });
+	if (!row || row.despatchItemId !== despatchItemId) throw new Error("Stage not found for this item.");
+	if (!row.nodeId) throw new Error("This stage can't be undone.");
+
+	async function collectDescendants(nodeId: string): Promise<string[]> {
+		const edges = await prisma.stageEdge.findMany({ where: { fromNodeId: nodeId } });
+		let collected: string[] = [];
+		for (const edge of edges) {
+			const childRow = await prisma.itemStageProgress.findFirst({ where: { despatchItemId, nodeId: edge.toNodeId } });
+			if (!childRow) continue;
+			if (childRow.completedAt) throw new Error(`Can't undo -- "${childRow.stageName}" has already been completed.`);
+			collected.push(childRow.id, ...(await collectDescendants(edge.toNodeId)));
+		}
+		return collected;
+	}
+
+	if (row.completedAt) {
+		const toRemove = await collectDescendants(row.nodeId);
+		if (toRemove.length > 0) await prisma.itemStageProgress.deleteMany({ where: { id: { in: toRemove } } });
+		await prisma.itemStageProgress.update({ where: { id: row.id }, data: { startedAt: null, completedAt: null } });
+	} else {
+		const incoming = await prisma.stageEdge.findMany({ where: { toNodeId: row.nodeId } });
+		if (incoming.length === 0) throw new Error("Can't undo the starting stage.");
+		const toRemove = await collectDescendants(row.nodeId);
+		if (toRemove.length > 0) await prisma.itemStageProgress.deleteMany({ where: { id: { in: toRemove } } });
+		await prisma.itemStageProgress.delete({ where: { id: row.id } });
+	}
+}
+
 // Recursively collects every DespatchItem id under (and including) a given
 // item's component tree, deepest-first, so callers can delete/query in an
 // order that never violates a not-yet-deleted parent reference.

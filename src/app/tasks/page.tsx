@@ -398,11 +398,12 @@ const itemFlowNodeTypes = { itemStage: ItemFlowNode };
 // also unchecked and clickable; checking one commits that path and greys
 // out the others), or "not-reached" (unchecked, disabled, greyed).
 const ItemRouteFlowchart = memo(function ItemRouteFlowchart({
-	progress, template, onCheckStage, onChooseBranch,
+	progress, template, onCheckStage, onUncheckStage, onChooseBranch,
 }: {
 	progress: ItemStage[];
 	template: StageTemplateLite;
 	onCheckStage: (stageId: string) => void;
+	onUncheckStage: (stageId: string) => void;
 	onChooseBranch: (edgeId: string) => void;
 }) {
 	const progressByNodeId = useMemo(() => new Map(progress.filter(p => p.nodeId).map(p => [p.nodeId as string, p])), [progress]);
@@ -429,7 +430,7 @@ const ItemRouteFlowchart = memo(function ItemRouteFlowchart({
 		let onCheck: (() => void) | undefined;
 		if (row) {
 			state = row.completedAt ? "done" : "current";
-			if (!row.completedAt) onCheck = () => onCheckStage(row.id);
+			onCheck = row.completedAt ? () => onUncheckStage(row.id) : () => onCheckStage(row.id);
 		} else if (pendingChoiceTargets.has(n.id)) {
 			state = "pending-choice";
 			const edgeId = pendingChoiceTargets.get(n.id)!;
@@ -449,7 +450,7 @@ const ItemRouteFlowchart = memo(function ItemRouteFlowchart({
 			],
 			data: { name: n.name, state, onCheck },
 		};
-	}), [template, progressByNodeId, pendingChoiceTargets, onCheckStage, onChooseBranch]);
+	}), [template, progressByNodeId, pendingChoiceTargets, onCheckStage, onUncheckStage, onChooseBranch]);
 
 	const rfEdges: RFEdge[] = useMemo(() => template.edges.map(e => ({
 		id: e.id, source: e.fromNodeId, target: e.toNodeId, label: e.label ?? undefined,
@@ -1255,6 +1256,20 @@ function TasksPageInner() {
 		}
 	}
 
+	async function undoStage(itemId: string, stageId: string) {
+		const res = await fetch(`/api/despatch-items/${itemId}/undo-stage`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ stageId }),
+		});
+		if (res.ok) {
+			load();
+		} else {
+			const json = await res.json().catch(() => ({}));
+			setError(typeof json.error === "string" ? json.error : "Couldn't undo this stage.");
+		}
+	}
+
 	async function chooseRoute(itemId: string, templateId: string) {
 		const res = await fetch(`/api/despatch-items/${itemId}/choose-route`, {
 			method: "POST",
@@ -1366,6 +1381,7 @@ function TasksPageInner() {
 						progress={progress}
 						template={template}
 						onCheckStage={(stageId) => advanceStage(item.id, stageId)}
+						onUncheckStage={(stageId) => undoStage(item.id, stageId)}
 						onChooseBranch={(edgeId) => chooseBranch(item.id, edgeId)}
 					/>
 				) : (
