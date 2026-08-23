@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, memo } from "react";
 import { useCurrentUser } from "../UserContext";
 import { PageHeader, EmptyState } from "@/components/ui";
 import { BUILT_IN_ITEM_CATEGORIES } from "@/lib/constants";
@@ -324,7 +324,7 @@ function validateGraph(nodes: DraftNode[], edges: DraftEdge[]): string | null {
 	return null;
 }
 
-function StageFlowNode({ id, data }: any) {
+const StageFlowNode = memo(function StageFlowNode({ id, data }: any) {
 	return (
 		<div className={`stage-flow-node${data.isStart ? " stage-flow-node-start" : ""}`}>
 			<Handle type="target" position={Position.Left} />
@@ -347,26 +347,43 @@ function StageFlowNode({ id, data }: any) {
 			<Handle type="source" position={Position.Right} />
 		</div>
 	);
-}
+});
 
 const flowNodeTypes = { stage: StageFlowNode };
 
-function RouteFlowEditor({ draft, onChange }: { draft: RouteDraft; onChange: (d: RouteDraft) => void }) {
-	function onRename(id: string, name: string) {
-		onChange({ ...draft, nodes: draft.nodes.map(n => (n.id === id ? { ...n, name } : n)) });
-	}
-	function onToggleStart(id: string) {
-		onChange({ ...draft, nodes: draft.nodes.map(n => ({ ...n, isStart: n.id === id })) });
-	}
-	function onDelete(id: string) {
-		onChange({
-			name: draft.name,
-			nodes: draft.nodes.filter(n => n.id !== id),
-			edges: draft.edges.filter(e => e.fromNodeId !== id && e.toNodeId !== id),
-		});
-	}
+// Memoized so editing one route's canvas doesn't re-render every other
+// route's canvas in the same (or another expanded) category -- previously
+// every keystroke rebuilt nodes/edges/callbacks from scratch for ALL of
+// them, which both felt sluggish and could interrupt an in-progress
+// connection drag gesture, making it seem like connecting nodes "didn't
+// work". `draftRef` lets the mutation callbacks stay referentially stable
+// (via useCallback) while still reading the latest draft when invoked.
+// `onChange` must be a stable (useCallback'd, key-taking) function from the
+// parent -- an inline `(d) => setDraft(key, d)` arrow would get a new
+// identity every parent render and defeat this memoization entirely, since
+// memo() bails out based on prop reference equality.
+const RouteFlowEditor = memo(function RouteFlowEditor({ draft, templateKey, onChange }: { draft: RouteDraft; templateKey: string; onChange: (key: string, d: RouteDraft) => void }) {
+	const draftRef = useRef(draft);
+	draftRef.current = draft;
 
-	const rfNodes: Node[] = draft.nodes.map(n => ({
+	const onRename = useCallback((id: string, name: string) => {
+		const d = draftRef.current;
+		onChange(templateKey, { ...d, nodes: d.nodes.map(n => (n.id === id ? { ...n, name } : n)) });
+	}, [onChange, templateKey]);
+	const onToggleStart = useCallback((id: string) => {
+		const d = draftRef.current;
+		onChange(templateKey, { ...d, nodes: d.nodes.map(n => ({ ...n, isStart: n.id === id })) });
+	}, [onChange, templateKey]);
+	const onDelete = useCallback((id: string) => {
+		const d = draftRef.current;
+		onChange(templateKey, {
+			name: d.name,
+			nodes: d.nodes.filter(n => n.id !== id),
+			edges: d.edges.filter(e => e.fromNodeId !== id && e.toNodeId !== id),
+		});
+	}, [onChange, templateKey]);
+
+	const rfNodes: Node[] = useMemo(() => draft.nodes.map(n => ({
 		id: n.id,
 		type: "stage",
 		position: { x: n.posX, y: n.posY },
@@ -376,32 +393,40 @@ function RouteFlowEditor({ draft, onChange }: { draft: RouteDraft; onChange: (d:
 		width: 180,
 		height: 44,
 		data: { name: n.name, isStart: n.isStart, onRename, onToggleStart, onDelete },
-	}));
-	const rfEdges: Edge[] = draft.edges.map(e => ({ id: e.id, source: e.fromNodeId, target: e.toNodeId, label: e.label ?? undefined }));
+	})), [draft.nodes, onRename, onToggleStart, onDelete]);
+	const rfEdges: Edge[] = useMemo(() => draft.edges.map(e => ({
+		id: e.id, source: e.fromNodeId, target: e.toNodeId, label: e.label ?? undefined,
+	})), [draft.edges]);
 
-	function onNodesChange(changes: NodeChange[]) {
-		const updated = applyNodeChanges(changes, rfNodes);
-		onChange({
-			...draft,
+	const onNodesChange = useCallback((changes: NodeChange[]) => {
+		const d = draftRef.current;
+		const currentRfNodes: Node[] = d.nodes.map(n => ({ id: n.id, type: "stage", position: { x: n.posX, y: n.posY }, data: {} }));
+		const updated = applyNodeChanges(changes, currentRfNodes);
+		onChange(templateKey, {
+			...d,
 			nodes: updated.map(n => {
-				const orig = draft.nodes.find(dn => dn.id === n.id);
+				const orig = d.nodes.find(dn => dn.id === n.id);
 				return { id: n.id, name: orig?.name ?? "", posX: n.position.x, posY: n.position.y, isStart: orig?.isStart ?? false };
 			}),
 		});
-	}
-	function onEdgesChange(changes: EdgeChange[]) {
-		const updated = applyEdgeChanges(changes, rfEdges);
-		onChange({ ...draft, edges: updated.map(e => ({ id: e.id, fromNodeId: e.source, toNodeId: e.target, label: ((e as Edge).label as string) ?? null })) });
-	}
-	function onConnect(connection: Connection) {
+	}, [onChange, templateKey]);
+	const onEdgesChange = useCallback((changes: EdgeChange[]) => {
+		const d = draftRef.current;
+		const currentRfEdges: Edge[] = d.edges.map(e => ({ id: e.id, source: e.fromNodeId, target: e.toNodeId, label: e.label ?? undefined }));
+		const updated = applyEdgeChanges(changes, currentRfEdges);
+		onChange(templateKey, { ...d, edges: updated.map(e => ({ id: e.id, fromNodeId: e.source, toNodeId: e.target, label: ((e as Edge).label as string) ?? null })) });
+	}, [onChange, templateKey]);
+	const onConnect = useCallback((connection: Connection) => {
 		if (!connection.source || !connection.target || connection.source === connection.target) return;
 		const label = window.prompt("Label this branch (optional):", "");
-		onChange({ ...draft, edges: [...draft.edges, { id: newNodeId(), fromNodeId: connection.source, toNodeId: connection.target, label: label || null }] });
-	}
-	function addNode() {
-		const maxX = draft.nodes.reduce((m, n) => Math.max(m, n.posX), 0);
-		onChange({ ...draft, nodes: [...draft.nodes, { id: newNodeId(), name: "New stage", posX: maxX + 180, posY: 80, isStart: draft.nodes.length === 0 }] });
-	}
+		const d = draftRef.current;
+		onChange(templateKey, { ...d, edges: [...d.edges, { id: newNodeId(), fromNodeId: connection.source, toNodeId: connection.target, label: label || null }] });
+	}, [onChange, templateKey]);
+	const addNode = useCallback(() => {
+		const d = draftRef.current;
+		const maxX = d.nodes.reduce((m, n) => Math.max(m, n.posX), 0);
+		onChange(templateKey, { ...d, nodes: [...d.nodes, { id: newNodeId(), name: "New stage", posX: maxX + 180, posY: 80, isStart: d.nodes.length === 0 }] });
+	}, [onChange, templateKey]);
 
 	return (
 		<div>
@@ -427,7 +452,7 @@ function RouteFlowEditor({ draft, onChange }: { draft: RouteDraft; onChange: (d:
 			</button>
 		</div>
 	);
-}
+});
 
 function ProductionStagesSection() {
 	const [customCategories, setCustomCategories] = useState<string[]>([]);
@@ -463,9 +488,11 @@ function ProductionStagesSection() {
 		return drafts[key] ?? fallback;
 	}
 
-	function setDraft(key: string, draft: RouteDraft) {
+	// Stable identity (empty deps, functional setState) so RouteFlowEditor's
+	// memo() can actually bail out when a sibling route's draft changes.
+	const setDraft = useCallback((key: string, draft: RouteDraft) => {
 		setDrafts(prev => ({ ...prev, [key]: draft }));
-	}
+	}, []);
 
 	function startNewTemplate(category: string) {
 		setDrafts(prev => ({ ...prev, [`new-${category}`]: blankDraft() }));
@@ -571,7 +598,7 @@ function ProductionStagesSection() {
 														Delete
 													</button>
 												</div>
-												<RouteFlowEditor draft={draft} onChange={(d) => setDraft(key, d)} />
+												<RouteFlowEditor draft={draft} templateKey={key} onChange={setDraft} />
 												<div className="flex gap-2 pt-1">
 													<button type="button" className="btn btn-primary btn-sm" onClick={() => saveTemplate(category, t, key)} disabled={saving === key}>
 														{saving === key ? "Saving…" : "Save"}
@@ -592,7 +619,7 @@ function ProductionStagesSection() {
 														onChange={(e) => setDraft(newKey, { ...draft, name: e.target.value })}
 														placeholder="Route name, e.g. Laminated"
 													/>
-													<RouteFlowEditor draft={draft} onChange={(d) => setDraft(newKey, d)} />
+													<RouteFlowEditor draft={draft} templateKey={newKey} onChange={setDraft} />
 													<div className="flex gap-2 pt-1">
 														<button type="button" className="btn btn-primary btn-sm" onClick={() => saveTemplate(category, null, newKey)} disabled={saving === newKey}>
 															{saving === newKey ? "Saving…" : "Save route"}
