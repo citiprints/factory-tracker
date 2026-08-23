@@ -371,8 +371,8 @@ const ItemFlowNode = memo(function ItemFlowNode({ data }: { data: ItemFlowNodeDa
 	return (
 		<div className={`item-flow-node item-flow-node-${data.state}`}>
 			<Handle type="target" position={Position.Left} />
-			<label className="item-flow-node-label">
-				<input type="checkbox" className="nodrag" checked={data.state === "done"} disabled={!data.onCheck} onChange={data.onCheck ?? undefined} />
+			<label className="item-flow-node-label nodrag nopan">
+				<input type="checkbox" className="nodrag nopan" checked={data.state === "done"} disabled={!data.onCheck} onChange={data.onCheck ?? undefined} />
 				<span>{data.name}</span>
 			</label>
 			<Handle type="source" position={Position.Right} />
@@ -461,6 +461,13 @@ const ItemRouteFlowchart = memo(function ItemRouteFlowchart({
 					zoomOnScroll={false}
 					zoomOnPinch={false}
 					zoomOnDoubleClick={false}
+					// nodesDraggable=false means React Flow never attaches its own
+					// node-level drag handler, so a pointerdown inside a node falls
+					// through to the pane -- panOnDrag being on then eats the click
+					// as a pan gesture before it ever reaches the checkbox. This is
+					// a small, auto-fit, read-mostly view with nothing worth panning
+					// to, so just turn panning off entirely.
+					panOnDrag={false}
 					proOptions={{ hideAttribution: true }}
 					fitView
 				>

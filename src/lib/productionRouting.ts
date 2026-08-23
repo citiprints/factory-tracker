@@ -45,24 +45,75 @@ async function nextOrder(despatchItemId: string): Promise<number> {
 	return (max._max.order ?? -1) + 1;
 }
 
+// A node with 2+ incoming edges is a join point, but "wait for every
+// predecessor" is only correct when those predecessors are siblings in an
+// AND fan-out. The far more common shape -- several OR alternatives that
+// all lead to the same next stage (e.g. Foil / Bottom / Die Cutting, only
+// one of which is ever chosen, all reconverging on Box Making) -- must NOT
+// wait for the alternatives that were never picked, since they'll never
+// complete. This walks backward from a not-yet-visited predecessor to
+// determine whether it's still genuinely possible for this item to reach
+// it, or whether an earlier OR choice has already ruled it out for good.
+async function isNodeRuledOut(despatchItemId: string, nodeId: string, cache: Map<string, boolean>): Promise<boolean> {
+	if (cache.has(nodeId)) return cache.get(nodeId)!;
+	cache.set(nodeId, false); // guard against revisiting mid-computation (graph is a DAG, shouldn't recurse back here)
+
+	const row = await prisma.itemStageProgress.findFirst({ where: { despatchItemId, nodeId } });
+	if (row) return false; // already visited -- definitely not ruled out
+
+	const incoming = await prisma.stageEdge.findMany({ where: { toNodeId: nodeId } });
+	if (incoming.length === 0) return false; // start node or disconnected -- not ruled out by this logic
+
+	for (const edge of incoming) {
+		const fromRow = await prisma.itemStageProgress.findFirst({ where: { despatchItemId, nodeId: edge.fromNodeId } });
+		if (!fromRow) {
+			if (!(await isNodeRuledOut(despatchItemId, edge.fromNodeId, cache))) {
+				cache.set(nodeId, false);
+				return false; // this predecessor hasn't been ruled out either -- still possible
+			}
+			continue;
+		}
+		const fromNode = await prisma.stageNode.findUnique({ where: { id: edge.fromNodeId } });
+		const fromOutgoing = await prisma.stageEdge.findMany({ where: { fromNodeId: edge.fromNodeId } });
+		if (fromOutgoing.length < 2 || fromNode?.branchType === "AND") {
+			cache.set(nodeId, false);
+			return false; // single path, or an AND fan-out -- this edge will be (or was) taken
+		}
+		if (!fromRow.completedAt) {
+			cache.set(nodeId, false);
+			return false; // OR node reached but choice not made yet -- still possible
+		}
+		const chosenRow = await prisma.itemStageProgress.findFirst({
+			where: { despatchItemId, nodeId: { in: fromOutgoing.map((e) => e.toNodeId) } },
+		});
+		if (!chosenRow || chosenRow.nodeId === nodeId) {
+			cache.set(nodeId, false);
+			return false; // this is the chosen path, or the choice isn't resolved yet
+		}
+		// a different branch was chosen -- this specific incoming path is dead, check the others
+	}
+	cache.set(nodeId, true);
+	return true; // every incoming path is dead
+}
+
 // Creates a progress row for `nodeId` for this item, unless it's already
 // been activated -- or, if it's a join point (2+ incoming edges), unless
-// every one of its predecessor nodes has already been completed by this
-// item. Called once per outgoing edge of a completing stage, so an AND
-// fan-out node activates several of these at once (one per parallel path),
-// while a join node quietly no-ops until its last parallel path catches up.
+// every one of its still-possible predecessors (excluding any ruled out by
+// an earlier OR choice elsewhere in the graph) has completed. Called once
+// per outgoing edge of a completing stage, so an AND fan-out node activates
+// several of these at once (one per parallel path), while a true join node
+// quietly no-ops until its last live parallel path catches up.
 async function activateNode(despatchItemId: string, nodeId: string) {
 	const alreadyActive = await prisma.itemStageProgress.findFirst({ where: { despatchItemId, nodeId } });
 	if (alreadyActive) return;
 
 	const incoming = await prisma.stageEdge.findMany({ where: { toNodeId: nodeId } });
 	if (incoming.length > 1) {
-		const predecessorIds = incoming.map((e) => e.fromNodeId);
-		const completed = await prisma.itemStageProgress.findMany({
-			where: { despatchItemId, nodeId: { in: predecessorIds }, completedAt: { not: null } },
-		});
-		const completedSet = new Set(completed.map((p) => p.nodeId));
-		if (!predecessorIds.every((id) => completedSet.has(id))) return; // still waiting on a parallel path
+		for (const edge of incoming) {
+			if (await isNodeRuledOut(despatchItemId, edge.fromNodeId, new Map())) continue;
+			const fromRow = await prisma.itemStageProgress.findFirst({ where: { despatchItemId, nodeId: edge.fromNodeId } });
+			if (!fromRow || !fromRow.completedAt) return; // still waiting on a real (not ruled-out) predecessor
+		}
 	}
 
 	const node = await prisma.stageNode.findUnique({ where: { id: nodeId } });
