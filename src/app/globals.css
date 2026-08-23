@@ -456,6 +456,65 @@ html[data-theme="dark"] {
     color: var(--danger);
   }
 
+  /* ---- Item route flowchart (Tasks page -- read-mostly, checkbox-driven) */
+  .item-flow-canvas {
+    background: var(--wash);
+  }
+  .item-flow-node {
+    display: flex;
+    align-items: center;
+    width: 170px;
+    height: 40px;
+    box-sizing: border-box;
+    padding: 0 0.5rem;
+    border-radius: 0.5rem;
+    border: 1px solid var(--line-strong);
+    background: var(--surface);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+    font-size: 0.74rem;
+  }
+  .item-flow-node-label {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    width: 100%;
+    cursor: pointer;
+  }
+  .item-flow-node-not-reached .item-flow-node-label,
+  .item-flow-node-not-reached input[type="checkbox"] {
+    cursor: default;
+  }
+  .item-flow-node-done {
+    border-color: var(--ok);
+    background: var(--ok-soft);
+    color: var(--ok);
+  }
+  .item-flow-node-done input[type="checkbox"] {
+    accent-color: var(--ok);
+  }
+  .item-flow-node-current {
+    border-color: var(--info);
+    background: var(--info-soft);
+    color: var(--info);
+    font-weight: 600;
+  }
+  .item-flow-node-current input[type="checkbox"] {
+    accent-color: var(--info);
+  }
+  .item-flow-node-pending-choice {
+    border-color: var(--warn);
+    background: var(--warn-soft);
+    color: var(--warn);
+    font-weight: 600;
+  }
+  .item-flow-node-pending-choice input[type="checkbox"] {
+    accent-color: var(--warn);
+  }
+  .item-flow-node-not-reached {
+    color: var(--muted);
+    opacity: 0.7;
+  }
+
   /* ---- Job-ticket metadata (dates, counts, ids) ------------------------ */
   .meta {
     font-family: var(--font-mono);

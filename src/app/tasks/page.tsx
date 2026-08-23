@@ -1,6 +1,6 @@
 // FORCE REBUILD - Loading animations added
 "use client";
-import React, { useEffect, useState, useRef, Suspense } from "react";
+import React, { useEffect, useState, useRef, useMemo, Suspense, memo } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useCurrentUser } from "../UserContext";
 import TaskComments from "@/components/TaskComments";
@@ -8,6 +8,8 @@ import { useRefreshCounts } from "../CountsContext";
 import { CustomerFields, EMPTY_CUSTOMER_FORM, customerFormToPayload, type CustomerFormState } from "@/components/CustomerFields";
 import { despatchItemStatusChipClass } from "@/lib/despatchItemStatus";
 import { BUILT_IN_ITEM_CATEGORIES } from "@/lib/constants";
+import { ReactFlow, Background, Handle, Position, ReactFlowProvider, type Node as RFNode, type Edge as RFEdge } from "@xyflow/react";
+import "@xyflow/react/dist/style.css";
 
 type Task = {
 	id: string;
@@ -68,7 +70,7 @@ type DespatchItem = {
 	stageTemplateId?: string | null;
 };
 
-type StageGraphNode = { id: string; name: string; isStart: boolean; branchType: "OR" | "AND" };
+type StageGraphNode = { id: string; name: string; isStart: boolean; branchType: "OR" | "AND"; posX: number; posY: number };
 type StageGraphEdge = { id: string; fromNodeId: string; toNodeId: string; label: string | null };
 type StageTemplateLite = { id: string; name: string; nodes: StageGraphNode[]; edges: StageGraphEdge[] };
 
@@ -362,6 +364,113 @@ function ItemSpecFields({
 	);
 }
 
+type ItemFlowNodeState = "done" | "current" | "pending-choice" | "not-reached";
+type ItemFlowNodeData = { name: string; state: ItemFlowNodeState; onCheck?: () => void };
+
+const ItemFlowNode = memo(function ItemFlowNode({ data }: { data: ItemFlowNodeData }) {
+	return (
+		<div className={`item-flow-node item-flow-node-${data.state}`}>
+			<Handle type="target" position={Position.Left} />
+			<label className="item-flow-node-label">
+				<input type="checkbox" className="nodrag" checked={data.state === "done"} disabled={!data.onCheck} onChange={data.onCheck ?? undefined} />
+				<span>{data.name}</span>
+			</label>
+			<Handle type="source" position={Position.Right} />
+		</div>
+	);
+});
+
+const itemFlowNodeTypes = { itemStage: ItemFlowNode };
+
+// Read-mostly flowchart for one item's live progress through its route --
+// same node graph and layout (posX/posY) the admin arranged in Settings,
+// just rendered small and non-draggable with a checkbox per stage instead
+// of edit controls. A stage is "done" (checked, disabled), "current" (the
+// item's actual next actionable stage -- unchecked, clickable), a
+// "pending-choice" candidate (one of an unresolved OR branch's targets --
+// also unchecked and clickable; checking one commits that path and greys
+// out the others), or "not-reached" (unchecked, disabled, greyed).
+const ItemRouteFlowchart = memo(function ItemRouteFlowchart({
+	progress, template, onCheckStage, onChooseBranch,
+}: {
+	progress: ItemStage[];
+	template: StageTemplateLite;
+	onCheckStage: (stageId: string) => void;
+	onChooseBranch: (edgeId: string) => void;
+}) {
+	const progressByNodeId = useMemo(() => new Map(progress.filter(p => p.nodeId).map(p => [p.nodeId as string, p])), [progress]);
+
+	// nodeId -> the specific edge id that would activate it, for any node
+	// that's a candidate in a still-unresolved OR branch choice.
+	const pendingChoiceTargets = useMemo(() => {
+		const map = new Map<string, string>();
+		for (const p of progress) {
+			if (!p.completedAt || !p.nodeId) continue;
+			const node = template.nodes.find(n => n.id === p.nodeId);
+			if (!node || node.branchType !== "OR") continue;
+			const outgoing = template.edges.filter(e => e.fromNodeId === p.nodeId);
+			if (outgoing.length < 2) continue;
+			if (outgoing.some(e => progressByNodeId.has(e.toNodeId))) continue;
+			for (const e of outgoing) map.set(e.toNodeId, e.id);
+		}
+		return map;
+	}, [progress, progressByNodeId, template]);
+
+	const rfNodes: RFNode[] = useMemo(() => template.nodes.map(n => {
+		const row = progressByNodeId.get(n.id);
+		let state: ItemFlowNodeState;
+		let onCheck: (() => void) | undefined;
+		if (row) {
+			state = row.completedAt ? "done" : "current";
+			if (!row.completedAt) onCheck = () => onCheckStage(row.id);
+		} else if (pendingChoiceTargets.has(n.id)) {
+			state = "pending-choice";
+			const edgeId = pendingChoiceTargets.get(n.id)!;
+			onCheck = () => onChooseBranch(edgeId);
+		} else {
+			state = "not-reached";
+		}
+		return {
+			id: n.id,
+			type: "itemStage",
+			position: { x: n.posX, y: n.posY },
+			initialWidth: 170,
+			initialHeight: 40,
+			handles: [
+				{ type: "target" as const, position: Position.Left, x: -3, y: 17, width: 6, height: 6 },
+				{ type: "source" as const, position: Position.Right, x: 167, y: 17, width: 6, height: 6 },
+			],
+			data: { name: n.name, state, onCheck },
+		};
+	}), [template, progressByNodeId, pendingChoiceTargets, onCheckStage, onChooseBranch]);
+
+	const rfEdges: RFEdge[] = useMemo(() => template.edges.map(e => ({
+		id: e.id, source: e.fromNodeId, target: e.toNodeId, label: e.label ?? undefined,
+	})), [template.edges]);
+
+	return (
+		<div style={{ height: 160 }} className="item-flow-canvas border border-line rounded-lg overflow-clip">
+			<ReactFlowProvider>
+				<ReactFlow
+					nodes={rfNodes}
+					edges={rfEdges}
+					nodeTypes={itemFlowNodeTypes}
+					nodesDraggable={false}
+					nodesConnectable={false}
+					elementsSelectable={false}
+					zoomOnScroll={false}
+					zoomOnPinch={false}
+					zoomOnDoubleClick={false}
+					proOptions={{ hideAttribution: true }}
+					fitView
+				>
+					<Background gap={16} />
+				</ReactFlow>
+			</ReactFlowProvider>
+		</div>
+	);
+});
+
 function TasksPageInner() {
 	const currentUser = useCurrentUser();
 	const refreshCounts = useRefreshCounts();
@@ -425,8 +534,6 @@ function TasksPageInner() {
 	const [templatesByCategory, setTemplatesByCategory] = useState<Record<string, StageTemplateLite[]>>({});
 	const [templatesById, setTemplatesById] = useState<Record<string, StageTemplateLite>>({});
 	const [routeChoiceDraft, setRouteChoiceDraft] = useState<Record<string, string>>({});
-	const [branchChoiceDraft, setBranchChoiceDraft] = useState<Record<string, string>>({});
-	const [addingComponentToItemId, setAddingComponentToItemId] = useState<string | null>(null);
 	const [customerId, setCustomerId] = useState<string>("");
 	const [users, setUsers] = useState<{ id: string; name: string }[]>([]);
 	const [showNewCustomerForm, setShowNewCustomerForm] = useState(false);
@@ -1092,7 +1199,6 @@ function TasksPageInner() {
 		if (res.ok) {
 			resetNewDespatchFields();
 			setAddingDespatchItemToTaskId(null);
-			setAddingComponentToItemId(null);
 			load();
 		}
 	}
@@ -1147,40 +1253,11 @@ function TasksPageInner() {
 			body: JSON.stringify({ edgeId }),
 		});
 		if (res.ok) {
-			setBranchChoiceDraft(prev => {
-				const next = { ...prev };
-				for (const key of Object.keys(next)) {
-					if (key.startsWith(`${itemId}:`)) delete next[key];
-				}
-				return next;
-			});
 			load();
 		} else {
 			const json = await res.json().catch(() => ({}));
 			setError(typeof json.error === "string" ? json.error : "Couldn't choose this item's next stage.");
 		}
-	}
-
-	// Walks forward from a node through single-outgoing-edge chains, stopping
-	// at a branch point (2+ edges) or the end (0 edges) -- lets the flowchart
-	// preview the unambiguous stretch of a route ahead of an item's current
-	// stage, without pretending to know which way a future branch will go.
-	function computeStagePreview(startNodeId: string, template: StageTemplateLite): { id: string; name: string }[] {
-		const preview: { id: string; name: string }[] = [];
-		let currentId = startNodeId;
-		const visited = new Set<string>([currentId]);
-		for (let i = 0; i < 25; i++) {
-			const outgoing = template.edges.filter(e => e.fromNodeId === currentId);
-			if (outgoing.length !== 1) break;
-			const nextId = outgoing[0].toNodeId;
-			if (visited.has(nextId)) break;
-			const node = template.nodes.find(n => n.id === nextId);
-			if (!node) break;
-			preview.push({ id: node.id, name: node.name });
-			visited.add(nextId);
-			currentId = nextId;
-		}
-		return preview;
 	}
 
 	// One item's status control -- a "Choose route" picker (category has 2+
@@ -1218,99 +1295,47 @@ function TasksPageInner() {
 
 		if (item.stageProgress && item.stageProgress.length > 0) {
 			const progress = item.stageProgress;
-			// An item can have several stages active at once under a parallel
-			// (AND) fan-out -- e.g. Foil, Bottom, and Die Cutting all in
-			// progress together before converging on Box Making -- so this is
-			// a list, not a single "next" stage.
-			const activeStages = progress.filter(s => !s.completedAt);
 			const template = item.stageTemplateId ? templatesById[item.stageTemplateId] : undefined;
-			// A completed OR-branch point whose target hasn't been chosen yet
-			// (an AND fan-out node's targets, by contrast, get activated
-			// automatically server-side, so they never show up here).
-			const pendingChoices = template
-				? progress.filter(s => {
-					if (!s.completedAt || !s.nodeId) return false;
+			const isFullyResolved = progress.every(s => !!s.completedAt)
+				&& !progress.some(s => {
+					if (!s.completedAt || !s.nodeId || !template) return false;
 					const node = template.nodes.find(n => n.id === s.nodeId);
 					if (!node || node.branchType !== "OR") return false;
 					const outgoing = template.edges.filter(e => e.fromNodeId === s.nodeId);
 					if (outgoing.length < 2) return false;
 					return !outgoing.some(e => progress.some(row => row.nodeId === e.toNodeId));
-				})
-				: [];
-			const lastRow = progress[progress.length - 1];
-			const preview = lastRow?.nodeId && template ? computeStagePreview(lastRow.nodeId, template) : [];
-			const isFullyResolved = activeStages.length === 0 && pendingChoices.length === 0;
+				});
 
 			return (
 				<div className="flex flex-col gap-2">
-					<div className="stage-flow">
-						{progress.map((stage, si) => (
-							<div key={stage.id} className="flex items-center">
-								<div
-									className={stage.completedAt ? "stage-node stage-node-done" : "stage-node stage-node-current"}
-									title={stage.completedAt ? `Completed ${new Date(stage.completedAt).toLocaleString()}` : stage.stageName}
-								>
-									<span className="stage-node-mark">{stage.completedAt ? "✓" : si + 1}</span>
-									{stage.stageName}
-								</div>
-								{(si < progress.length - 1 || preview.length > 0) && (
-									<div className={stage.completedAt ? "stage-connector stage-connector-done" : "stage-connector"} />
-								)}
-							</div>
-						))}
-						{preview.map((p, pi) => (
-							<div key={p.id} className="flex items-center">
-								<div className="stage-node" title={`Upcoming: ${p.name}`}>
-									<span className="stage-node-mark">{progress.length + pi + 1}</span>
-									{p.name}
-								</div>
-								{pi < preview.length - 1 && <div className="stage-connector" />}
-							</div>
-						))}
-					</div>
-					<div className="flex flex-col gap-1.5 items-start">
-						{activeStages.map(stage => (
-							<button key={stage.id} type="button" className="btn btn-outline btn-sm" onClick={() => advanceStage(item.id, stage.id)}>
-								Mark &quot;{stage.stageName}&quot; done
-							</button>
-						))}
-						{pendingChoices.map(stage => {
-							const branchOptions = template!.edges.filter(e => e.fromNodeId === stage.nodeId);
-							const draftKey = `${item.id}:${stage.id}`;
-							return (
-								<div key={stage.id} className="flex items-center gap-1">
-									<select
-										className="input text-xs py-1 !w-auto"
-										value={branchChoiceDraft[draftKey] ?? ""}
-										onChange={(e) => setBranchChoiceDraft(prev => ({ ...prev, [draftKey]: e.target.value }))}
-									>
-										<option value="">After &quot;{stage.stageName}&quot;, choose…</option>
-										{branchOptions.map(e => {
-											const toNode = template!.nodes.find(n => n.id === e.toNodeId);
-											return <option key={e.id} value={e.id}>{e.label ? `${toNode?.name} (${e.label})` : toNode?.name}</option>;
-										})}
-									</select>
-									<button
-										type="button"
-										className="btn btn-outline btn-sm"
-										disabled={!branchChoiceDraft[draftKey]}
-										onClick={() => chooseBranch(item.id, branchChoiceDraft[draftKey])}
-									>
-										Confirm
-									</button>
-								</div>
-							);
-						})}
-						{isFullyResolved && item.status !== "PACKED" && item.status !== "DESPATCHED" && (
-							// All stages checked off, but the item hasn't actually
-							// advanced yet -- either a normal one-click confirmation,
-							// or (if this item has components) a retry that will keep
-							// failing with a clear reason until they're all Despatched.
-							<button type="button" className="btn btn-outline btn-sm" onClick={() => updateDespatchItemStatus(item.id, "PACKED")}>
-								Mark Packed
-							</button>
-						)}
-					</div>
+					{template ? (
+						<ItemRouteFlowchart
+							progress={progress}
+							template={template}
+							onCheckStage={(stageId) => advanceStage(item.id, stageId)}
+							onChooseBranch={(edgeId) => chooseBranch(item.id, edgeId)}
+						/>
+					) : (
+						// Defensive fallback if the template couldn't be loaded (e.g.
+						// deleted) -- a plain read-only list from the progress
+						// snapshot itself, which doesn't need template data.
+						<div className="stage-flow">
+							{progress.map(stage => (
+								<span key={stage.id} className={stage.completedAt ? "stage-node stage-node-done" : "stage-node stage-node-current"}>
+									{stage.completedAt ? "✓ " : ""}{stage.stageName}
+								</span>
+							))}
+						</div>
+					)}
+					{isFullyResolved && item.status !== "PACKED" && item.status !== "DESPATCHED" && (
+						// All stages checked off, but the item hasn't actually
+						// advanced yet -- either a normal one-click confirmation,
+						// or (if this item has components) a retry that will keep
+						// failing with a clear reason until they're all Despatched.
+						<button type="button" className="btn btn-outline btn-sm self-start" onClick={() => updateDespatchItemStatus(item.id, "PACKED")}>
+							Mark Packed
+						</button>
+					)}
 				</div>
 			);
 		}
@@ -3067,59 +3092,6 @@ function TasksPageInner() {
 																</div>
 															</div>
 														)}
-															{!item.parentItemId && (() => {
-																const myComponents = (t.despatchItems ?? []).filter(c => c.parentItemId === item.id);
-																return (
-																	<div className="mt-2 pl-4 border-l-2 border-line space-y-2">
-																		{myComponents.map(comp => (
-																			<div key={comp.id} className="flex flex-wrap items-center justify-between gap-2 p-2 bg-wash rounded">
-																				<span className="text-xs">{comp.name} — {comp.quantity} {comp.unit}{comp.specFields?.category ? ` · ${comp.specFields.category}` : ""}</span>
-																				<div className="flex items-center gap-1">
-																					{renderItemStatusControl(comp)}
-																					<button
-																						type="button"
-																						onClick={() => deleteDespatchItem(comp.id)}
-																						className="text-xs px-2 py-1 rounded border text-red-600 hover:text-red-800 hover:bg-red-50"
-																					>
-																						Delete
-																					</button>
-																				</div>
-																			</div>
-																		))}
-																		{addingComponentToItemId === item.id ? (
-																			<form
-																				onSubmit={(e) => { e.preventDefault(); createDespatchItem(t.id, item.id); }}
-																				className="space-y-2 p-2 border border-line rounded-lg bg-white"
-																			>
-																				<div className="flex flex-wrap gap-2">
-																					<select className="input flex-1 min-w-[8rem] text-xs" value={newDespatchCategory} onChange={(e) => setNewDespatchCategory(e.target.value)}>
-																						<option value="">Select type</option>
-																						{BUILT_IN_ITEM_CATEGORIES.map(c => (<option key={c} value={c}>{c}</option>))}
-																						{dynamicCategories.map(c => (<option key={c.id} value={c.name}>{c.name}</option>))}
-																					</select>
-																					<input className="input flex-[2] min-w-[8rem] text-xs" placeholder="Component name" value={newDespatchName} onChange={(e) => setNewDespatchName(e.target.value)} required />
-																					<div className="flex gap-1 flex-1 min-w-[8rem]">
-																						<input className="input text-xs" type="number" min="0" step="any" placeholder="Qty" value={newDespatchQuantity} onChange={(e) => setNewDespatchQuantity(e.target.value)} required />
-																						<input className="input text-xs" placeholder="Unit" value={newDespatchUnit} onChange={(e) => setNewDespatchUnit(e.target.value)} />
-																					</div>
-																				</div>
-																				<div className="flex gap-2">
-																					<button type="submit" className="btn btn-accent btn-sm">Add</button>
-																					<button type="button" className="btn btn-outline btn-sm" onClick={() => { setAddingComponentToItemId(null); resetNewDespatchFields(); }}>Cancel</button>
-																				</div>
-																			</form>
-																		) : (
-																			<button
-																				type="button"
-																				className="text-xs px-2 py-1 rounded border"
-																				onClick={() => { setAddingComponentToItemId(item.id); resetNewDespatchFields(); }}
-																			>
-																				+ Add component
-																			</button>
-																		)}
-																	</div>
-																);
-															})()}
 													</div>
 												))}
 											</div>

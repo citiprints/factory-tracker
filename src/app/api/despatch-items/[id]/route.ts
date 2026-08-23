@@ -78,7 +78,15 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 			// several, leave progress empty -- the client shows a "Choose
 			// route" picker instead, which calls POST .../choose-route. A
 			// category with no template at all is untouched -- plain dropdown.
-			if (despatchItem.status === "PRE_PRODUCTION") {
+			// Also checked on PRODUCTION, not just PRE_PRODUCTION -- the plain
+			// dropdown lets someone jump straight there from Pending Client
+			// Approval, skipping Pre Production entirely, and a route should
+			// still get attached whenever the item first enters active
+			// production rather than only if that one specific status was
+			// visited. Not checked for PACKED/DESPATCHED: attaching a fresh,
+			// entirely-unstarted checklist to an item already being packed or
+			// shipped would be confusing rather than useful.
+			if (despatchItem.status === "PRE_PRODUCTION" || despatchItem.status === "PRODUCTION") {
 				const existingProgress = await prisma.itemStageProgress.count({ where: { despatchItemId: despatchItem.id } });
 				if (existingProgress === 0) {
 					let category: string | undefined;
