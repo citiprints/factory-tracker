@@ -1260,11 +1260,15 @@ function TasksPageInner() {
 		}
 	}
 
-	// One item's status control -- a "Choose route" picker (category has 2+
-	// named templates and no route picked yet), the stage checklist (route
-	// already chosen), or the plain dropdown (no routing configured for this
-	// category at all). Shared by top-level items and their components,
-	// which use the exact same status pipeline independently.
+	// One item's small, inline-sized status control -- a "Choose route"
+	// picker (category has 2+ named templates and no route picked yet), or
+	// the plain status dropdown (no routing configured for this category at
+	// all, or the route already picked -- once picked, the full flowchart
+	// below takes over and this renders nothing). Meant to sit inline next
+	// to the item's Edit/Delete buttons, unlike the flowchart itself (see
+	// renderItemFlowchart), which needs its own full-width row -- a fixed-
+	// size React Flow canvas squeezed into a flex row with no width to give
+	// it collapses to almost nothing.
 	function renderItemStatusControl(item: DespatchItem) {
 		const category = item.specFields?.category as string | undefined;
 		const catTemplates = category ? (templatesByCategory[category] ?? []) : [];
@@ -1294,50 +1298,7 @@ function TasksPageInner() {
 		}
 
 		if (item.stageProgress && item.stageProgress.length > 0) {
-			const progress = item.stageProgress;
-			const template = item.stageTemplateId ? templatesById[item.stageTemplateId] : undefined;
-			const isFullyResolved = progress.every(s => !!s.completedAt)
-				&& !progress.some(s => {
-					if (!s.completedAt || !s.nodeId || !template) return false;
-					const node = template.nodes.find(n => n.id === s.nodeId);
-					if (!node || node.branchType !== "OR") return false;
-					const outgoing = template.edges.filter(e => e.fromNodeId === s.nodeId);
-					if (outgoing.length < 2) return false;
-					return !outgoing.some(e => progress.some(row => row.nodeId === e.toNodeId));
-				});
-
-			return (
-				<div className="flex flex-col gap-2">
-					{template ? (
-						<ItemRouteFlowchart
-							progress={progress}
-							template={template}
-							onCheckStage={(stageId) => advanceStage(item.id, stageId)}
-							onChooseBranch={(edgeId) => chooseBranch(item.id, edgeId)}
-						/>
-					) : (
-						// Defensive fallback if the template couldn't be loaded (e.g.
-						// deleted) -- a plain read-only list from the progress
-						// snapshot itself, which doesn't need template data.
-						<div className="stage-flow">
-							{progress.map(stage => (
-								<span key={stage.id} className={stage.completedAt ? "stage-node stage-node-done" : "stage-node stage-node-current"}>
-									{stage.completedAt ? "✓ " : ""}{stage.stageName}
-								</span>
-							))}
-						</div>
-					)}
-					{isFullyResolved && item.status !== "PACKED" && item.status !== "DESPATCHED" && (
-						// All stages checked off, but the item hasn't actually
-						// advanced yet -- either a normal one-click confirmation,
-						// or (if this item has components) a retry that will keep
-						// failing with a clear reason until they're all Despatched.
-						<button type="button" className="btn btn-outline btn-sm self-start" onClick={() => updateDespatchItemStatus(item.id, "PACKED")}>
-							Mark Packed
-						</button>
-					)}
-				</div>
-			);
+			return null; // handled by renderItemFlowchart's own full-width row
 		}
 
 		return (
@@ -1352,6 +1313,59 @@ function TasksPageInner() {
 				<option value="PACKED">Packed</option>
 				<option value="DESPATCHED">Despatched</option>
 			</select>
+		);
+	}
+
+	// The full-width flowchart block for an item that already has a route
+	// picked -- rendered as its own row below the item's header (name/Edit/
+	// Delete), not squeezed inline with them. Returns null for an item with
+	// no route yet (renderItemStatusControl covers that case inline instead).
+	function renderItemFlowchart(item: DespatchItem) {
+		if (!item.stageProgress || item.stageProgress.length === 0) return null;
+
+		const progress = item.stageProgress;
+		const template = item.stageTemplateId ? templatesById[item.stageTemplateId] : undefined;
+		const isFullyResolved = progress.every(s => !!s.completedAt)
+			&& !progress.some(s => {
+				if (!s.completedAt || !s.nodeId || !template) return false;
+				const node = template.nodes.find(n => n.id === s.nodeId);
+				if (!node || node.branchType !== "OR") return false;
+				const outgoing = template.edges.filter(e => e.fromNodeId === s.nodeId);
+				if (outgoing.length < 2) return false;
+				return !outgoing.some(e => progress.some(row => row.nodeId === e.toNodeId));
+			});
+
+		return (
+			<div className="flex flex-col gap-2 mt-2">
+				{template ? (
+					<ItemRouteFlowchart
+						progress={progress}
+						template={template}
+						onCheckStage={(stageId) => advanceStage(item.id, stageId)}
+						onChooseBranch={(edgeId) => chooseBranch(item.id, edgeId)}
+					/>
+				) : (
+					// Defensive fallback if the template couldn't be loaded (e.g.
+					// deleted) -- a plain read-only list from the progress
+					// snapshot itself, which doesn't need template data.
+					<div className="stage-flow">
+						{progress.map(stage => (
+							<span key={stage.id} className={stage.completedAt ? "stage-node stage-node-done" : "stage-node stage-node-current"}>
+								{stage.completedAt ? "✓ " : ""}{stage.stageName}
+							</span>
+						))}
+					</div>
+				)}
+				{isFullyResolved && item.status !== "PACKED" && item.status !== "DESPATCHED" && (
+					// All stages checked off, but the item hasn't actually
+					// advanced yet -- either a normal one-click confirmation,
+					// or (if this item has components) a retry that will keep
+					// failing with a clear reason until they're all Despatched.
+					<button type="button" className="btn btn-outline btn-sm self-start" onClick={() => updateDespatchItemStatus(item.id, "PACKED")}>
+						Mark Packed
+					</button>
+				)}
+			</div>
 		);
 	}
 
@@ -3092,6 +3106,7 @@ function TasksPageInner() {
 																</div>
 															</div>
 														)}
+														{editingDespatchItemId !== item.id && renderItemFlowchart(item)}
 													</div>
 												))}
 											</div>
