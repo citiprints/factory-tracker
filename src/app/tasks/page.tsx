@@ -68,7 +68,7 @@ type DespatchItem = {
 	stageTemplateId?: string | null;
 };
 
-type StageGraphNode = { id: string; name: string; isStart: boolean };
+type StageGraphNode = { id: string; name: string; isStart: boolean; branchType: "OR" | "AND" };
 type StageGraphEdge = { id: string; fromNodeId: string; toNodeId: string; label: string | null };
 type StageTemplateLite = { id: string; name: string; nodes: StageGraphNode[]; edges: StageGraphEdge[] };
 
@@ -1111,8 +1111,12 @@ function TasksPageInner() {
 		}
 	}
 
-	async function advanceStage(itemId: string) {
-		const res = await fetch(`/api/despatch-items/${itemId}/advance-stage`, { method: "POST" });
+	async function advanceStage(itemId: string, stageId: string) {
+		const res = await fetch(`/api/despatch-items/${itemId}/advance-stage`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ stageId }),
+		});
 		if (res.ok) {
 			load();
 		} else {
@@ -1143,7 +1147,13 @@ function TasksPageInner() {
 			body: JSON.stringify({ edgeId }),
 		});
 		if (res.ok) {
-			setBranchChoiceDraft(prev => { const next = { ...prev }; delete next[itemId]; return next; });
+			setBranchChoiceDraft(prev => {
+				const next = { ...prev };
+				for (const key of Object.keys(next)) {
+					if (key.startsWith(`${itemId}:`)) delete next[key];
+				}
+				return next;
+			});
 			load();
 		} else {
 			const json = await res.json().catch(() => ({}));
@@ -1207,80 +1217,100 @@ function TasksPageInner() {
 		}
 
 		if (item.stageProgress && item.stageProgress.length > 0) {
-			const next = item.stageProgress.find(s => !s.completedAt);
-			const lastRow = item.stageProgress[item.stageProgress.length - 1];
+			const progress = item.stageProgress;
+			// An item can have several stages active at once under a parallel
+			// (AND) fan-out -- e.g. Foil, Bottom, and Die Cutting all in
+			// progress together before converging on Box Making -- so this is
+			// a list, not a single "next" stage.
+			const activeStages = progress.filter(s => !s.completedAt);
 			const template = item.stageTemplateId ? templatesById[item.stageTemplateId] : undefined;
-			const branchOptions = !next && lastRow?.nodeId && template
-				? template.edges.filter(e => e.fromNodeId === lastRow.nodeId)
+			// A completed OR-branch point whose target hasn't been chosen yet
+			// (an AND fan-out node's targets, by contrast, get activated
+			// automatically server-side, so they never show up here).
+			const pendingChoices = template
+				? progress.filter(s => {
+					if (!s.completedAt || !s.nodeId) return false;
+					const node = template.nodes.find(n => n.id === s.nodeId);
+					if (!node || node.branchType !== "OR") return false;
+					const outgoing = template.edges.filter(e => e.fromNodeId === s.nodeId);
+					if (outgoing.length < 2) return false;
+					return !outgoing.some(e => progress.some(row => row.nodeId === e.toNodeId));
+				})
 				: [];
+			const lastRow = progress[progress.length - 1];
 			const preview = lastRow?.nodeId && template ? computeStagePreview(lastRow.nodeId, template) : [];
+			const isFullyResolved = activeStages.length === 0 && pendingChoices.length === 0;
 
 			return (
 				<div className="flex flex-col gap-2">
 					<div className="stage-flow">
-						{item.stageProgress.map((stage, si) => {
-							const isNext = !stage.completedAt && (si === 0 || !!item.stageProgress![si - 1].completedAt);
-							const state = stage.completedAt ? "done" : isNext ? "current" : "upcoming";
-							return (
-								<div key={stage.id} className="flex items-center">
-									<div
-										className={state === "done" ? "stage-node stage-node-done" : state === "current" ? "stage-node stage-node-current" : "stage-node"}
-										title={stage.completedAt ? `Completed ${new Date(stage.completedAt).toLocaleString()}` : stage.stageName}
-									>
-										<span className="stage-node-mark">{stage.completedAt ? "✓" : si + 1}</span>
-										{stage.stageName}
-									</div>
-									{(si < item.stageProgress!.length - 1 || preview.length > 0) && (
-										<div className={stage.completedAt ? "stage-connector stage-connector-done" : "stage-connector"} />
-									)}
+						{progress.map((stage, si) => (
+							<div key={stage.id} className="flex items-center">
+								<div
+									className={stage.completedAt ? "stage-node stage-node-done" : "stage-node stage-node-current"}
+									title={stage.completedAt ? `Completed ${new Date(stage.completedAt).toLocaleString()}` : stage.stageName}
+								>
+									<span className="stage-node-mark">{stage.completedAt ? "✓" : si + 1}</span>
+									{stage.stageName}
 								</div>
-							);
-						})}
+								{(si < progress.length - 1 || preview.length > 0) && (
+									<div className={stage.completedAt ? "stage-connector stage-connector-done" : "stage-connector"} />
+								)}
+							</div>
+						))}
 						{preview.map((p, pi) => (
 							<div key={p.id} className="flex items-center">
 								<div className="stage-node" title={`Upcoming: ${p.name}`}>
-									<span className="stage-node-mark">{item.stageProgress!.length + pi + 1}</span>
+									<span className="stage-node-mark">{progress.length + pi + 1}</span>
 									{p.name}
 								</div>
 								{pi < preview.length - 1 && <div className="stage-connector" />}
 							</div>
 						))}
 					</div>
-					{next ? (
-						<button type="button" className="btn btn-outline btn-sm self-start" onClick={() => advanceStage(item.id)}>
-							Mark &quot;{next.stageName}&quot; done
-						</button>
-					) : branchOptions.length >= 2 ? (
-						<div className="flex items-center gap-1">
-							<select
-								className="input text-xs py-1 !w-auto"
-								value={branchChoiceDraft[item.id] ?? ""}
-								onChange={(e) => setBranchChoiceDraft(prev => ({ ...prev, [item.id]: e.target.value }))}
-							>
-								<option value="">Choose next stage…</option>
-								{branchOptions.map(e => {
-									const toNode = template!.nodes.find(n => n.id === e.toNodeId);
-									return <option key={e.id} value={e.id}>{e.label ? `${toNode?.name} (${e.label})` : toNode?.name}</option>;
-								})}
-							</select>
-							<button
-								type="button"
-								className="btn btn-outline btn-sm"
-								disabled={!branchChoiceDraft[item.id]}
-								onClick={() => chooseBranch(item.id, branchChoiceDraft[item.id])}
-							>
-								Confirm
+					<div className="flex flex-col gap-1.5 items-start">
+						{activeStages.map(stage => (
+							<button key={stage.id} type="button" className="btn btn-outline btn-sm" onClick={() => advanceStage(item.id, stage.id)}>
+								Mark &quot;{stage.stageName}&quot; done
 							</button>
-						</div>
-					) : item.status !== "PACKED" && item.status !== "DESPATCHED" ? (
-						// All stages checked off, but the item hasn't actually
-						// advanced yet -- either a normal one-click confirmation,
-						// or (if this item has components) a retry that will keep
-						// failing with a clear reason until they're all Despatched.
-						<button type="button" className="btn btn-outline btn-sm self-start" onClick={() => updateDespatchItemStatus(item.id, "PACKED")}>
-							Mark Packed
-						</button>
-					) : null}
+						))}
+						{pendingChoices.map(stage => {
+							const branchOptions = template!.edges.filter(e => e.fromNodeId === stage.nodeId);
+							const draftKey = `${item.id}:${stage.id}`;
+							return (
+								<div key={stage.id} className="flex items-center gap-1">
+									<select
+										className="input text-xs py-1 !w-auto"
+										value={branchChoiceDraft[draftKey] ?? ""}
+										onChange={(e) => setBranchChoiceDraft(prev => ({ ...prev, [draftKey]: e.target.value }))}
+									>
+										<option value="">After &quot;{stage.stageName}&quot;, choose…</option>
+										{branchOptions.map(e => {
+											const toNode = template!.nodes.find(n => n.id === e.toNodeId);
+											return <option key={e.id} value={e.id}>{e.label ? `${toNode?.name} (${e.label})` : toNode?.name}</option>;
+										})}
+									</select>
+									<button
+										type="button"
+										className="btn btn-outline btn-sm"
+										disabled={!branchChoiceDraft[draftKey]}
+										onClick={() => chooseBranch(item.id, branchChoiceDraft[draftKey])}
+									>
+										Confirm
+									</button>
+								</div>
+							);
+						})}
+						{isFullyResolved && item.status !== "PACKED" && item.status !== "DESPATCHED" && (
+							// All stages checked off, but the item hasn't actually
+							// advanced yet -- either a normal one-click confirmation,
+							// or (if this item has components) a retry that will keep
+							// failing with a clear reason until they're all Despatched.
+							<button type="button" className="btn btn-outline btn-sm" onClick={() => updateDespatchItemStatus(item.id, "PACKED")}>
+								Mark Packed
+							</button>
+						)}
+					</div>
 				</div>
 			);
 		}

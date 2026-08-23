@@ -17,7 +17,7 @@ export async function GET() {
 		id: r.id,
 		category: r.category,
 		name: r.name,
-		nodes: r.nodes.map((n) => ({ id: n.id, name: n.name, posX: n.posX, posY: n.posY, isStart: n.isStart })),
+		nodes: r.nodes.map((n) => ({ id: n.id, name: n.name, posX: n.posX, posY: n.posY, isStart: n.isStart, branchType: n.branchType })),
 		edges: r.edges.map((e) => ({ id: e.id, fromNodeId: e.fromNodeId, toNodeId: e.toNodeId, label: e.label })),
 	}));
 
@@ -30,6 +30,7 @@ const NodeSchema = z.object({
 	posX: z.number(),
 	posY: z.number(),
 	isStart: z.boolean(),
+	branchType: z.enum(["OR", "AND"]).default("OR"),
 });
 const EdgeSchema = z.object({
 	fromNodeId: z.string().min(1),
@@ -75,7 +76,7 @@ export async function POST(request: Request) {
 			const idMap = new Map<string, string>();
 			for (const n of data.nodes) {
 				const node = await tx.stageNode.create({
-					data: { templateId: created.id, name: n.name, posX: n.posX, posY: n.posY, isStart: n.isStart },
+					data: { templateId: created.id, name: n.name, posX: n.posX, posY: n.posY, isStart: n.isStart, branchType: n.branchType },
 				});
 				idMap.set(n.id, node.id);
 			}

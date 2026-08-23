@@ -279,7 +279,11 @@ function CategoriesSection() {
 	);
 }
 
-type DraftNode = { id: string; name: string; posX: number; posY: number; isStart: boolean };
+// branchType only matters once this node has 2+ outgoing edges: "OR"
+// (default) is an exclusive choice -- an item takes exactly one path. "AND"
+// is a parallel fan-out -- an item takes every path at once, each tracked
+// independently, converging back together wherever those paths later meet.
+type DraftNode = { id: string; name: string; posX: number; posY: number; isStart: boolean; branchType: "OR" | "AND" };
 type DraftEdge = { id: string; fromNodeId: string; toNodeId: string; label: string | null };
 type RouteDraft = { name: string; nodes: DraftNode[]; edges: DraftEdge[] };
 type StageTemplate = { id: string; category: string; name: string; nodes: DraftNode[]; edges: DraftEdge[] };
@@ -290,7 +294,7 @@ function newNodeId() {
 
 function blankDraft(): RouteDraft {
 	const startId = newNodeId();
-	return { name: "", nodes: [{ id: startId, name: "Stage 1", posX: 40, posY: 80, isStart: true }], edges: [] };
+	return { name: "", nodes: [{ id: startId, name: "Stage 1", posX: 40, posY: 80, isStart: true, branchType: "OR" }], edges: [] };
 }
 
 // A route must be a DAG with exactly one start node -- mirrors
@@ -346,6 +350,16 @@ const StageFlowNode = memo(function StageFlowNode({ id, data }: any) {
 				×
 			</button>
 			<Handle type="source" position={Position.Right} />
+			{data.hasMultipleOutgoing && (
+				<button
+					type="button"
+					title={data.branchType === "AND" ? "All paths happen in parallel -- click to switch to \"pick one\"" : "Exactly one path is taken -- click to switch to \"all happen in parallel\""}
+					onClick={() => data.onToggleBranchType(id)}
+					className={`stage-flow-node-branch-badge nodrag nopan${data.branchType === "AND" ? " stage-flow-node-branch-badge-and" : ""}`}
+				>
+					{data.branchType === "AND" ? "ALL PATHS" : "PICK ONE"}
+				</button>
+			)}
 		</div>
 	);
 });
@@ -386,6 +400,15 @@ const RouteFlowEditor = memo(function RouteFlowEditor({ draft, templateKey, onCh
 			edges: d.edges.filter(e => e.fromNodeId !== id && e.toNodeId !== id),
 		}));
 	}, [onChange, templateKey]);
+	const onToggleBranchType = useCallback((id: string) => {
+		onChange(templateKey, (d) => ({ ...d, nodes: d.nodes.map(n => (n.id === id ? { ...n, branchType: n.branchType === "OR" ? "AND" : "OR" } : n)) }));
+	}, [onChange, templateKey]);
+
+	const outgoingCounts = useMemo(() => {
+		const counts = new Map<string, number>();
+		for (const e of draft.edges) counts.set(e.fromNodeId, (counts.get(e.fromNodeId) ?? 0) + 1);
+		return counts;
+	}, [draft.edges]);
 
 	const rfNodes: Node[] = useMemo(() => draft.nodes.map(n => ({
 		id: n.id,
@@ -411,8 +434,14 @@ const RouteFlowEditor = memo(function RouteFlowEditor({ draft, templateKey, onCh
 			{ type: "target" as const, position: Position.Left, x: -3, y: 19, width: 6, height: 6 },
 			{ type: "source" as const, position: Position.Right, x: 177, y: 19, width: 6, height: 6 },
 		],
-		data: { name: n.name, isStart: n.isStart, onRename, onToggleStart, onDelete },
-	})), [draft.nodes, onRename, onToggleStart, onDelete]);
+		data: {
+			name: n.name,
+			isStart: n.isStart,
+			branchType: n.branchType,
+			hasMultipleOutgoing: (outgoingCounts.get(n.id) ?? 0) >= 2,
+			onRename, onToggleStart, onDelete, onToggleBranchType,
+		},
+	})), [draft.nodes, outgoingCounts, onRename, onToggleStart, onDelete, onToggleBranchType]);
 	const rfEdges: Edge[] = useMemo(() => draft.edges.map(e => ({
 		id: e.id, source: e.fromNodeId, target: e.toNodeId, label: e.label ?? undefined,
 	})), [draft.edges]);
@@ -425,7 +454,7 @@ const RouteFlowEditor = memo(function RouteFlowEditor({ draft, templateKey, onCh
 				...d,
 				nodes: updated.map(n => {
 					const orig = d.nodes.find(dn => dn.id === n.id);
-					return { id: n.id, name: orig?.name ?? "", posX: n.position.x, posY: n.position.y, isStart: orig?.isStart ?? false };
+					return { id: n.id, name: orig?.name ?? "", posX: n.position.x, posY: n.position.y, isStart: orig?.isStart ?? false, branchType: orig?.branchType ?? "OR" };
 				}),
 			};
 		});
@@ -450,7 +479,7 @@ const RouteFlowEditor = memo(function RouteFlowEditor({ draft, templateKey, onCh
 	const addNode = useCallback(() => {
 		onChange(templateKey, (d) => {
 			const maxX = d.nodes.reduce((m, n) => Math.max(m, n.posX), 0);
-			return { ...d, nodes: [...d.nodes, { id: newNodeId(), name: "New stage", posX: maxX + 180, posY: 80, isStart: d.nodes.length === 0 }] };
+			return { ...d, nodes: [...d.nodes, { id: newNodeId(), name: "New stage", posX: maxX + 180, posY: 80, isStart: d.nodes.length === 0, branchType: "OR" }] };
 		});
 	}, [onChange, templateKey]);
 

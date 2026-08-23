@@ -37,6 +37,67 @@ export function assertIsDag(nodes: GraphNode[], edges: GraphEdge[]) {
 	}
 }
 
+async function nextOrder(despatchItemId: string): Promise<number> {
+	const max = await prisma.itemStageProgress.aggregate({
+		where: { despatchItemId },
+		_max: { order: true },
+	});
+	return (max._max.order ?? -1) + 1;
+}
+
+// Creates a progress row for `nodeId` for this item, unless it's already
+// been activated -- or, if it's a join point (2+ incoming edges), unless
+// every one of its predecessor nodes has already been completed by this
+// item. Called once per outgoing edge of a completing stage, so an AND
+// fan-out node activates several of these at once (one per parallel path),
+// while a join node quietly no-ops until its last parallel path catches up.
+async function activateNode(despatchItemId: string, nodeId: string) {
+	const alreadyActive = await prisma.itemStageProgress.findFirst({ where: { despatchItemId, nodeId } });
+	if (alreadyActive) return;
+
+	const incoming = await prisma.stageEdge.findMany({ where: { toNodeId: nodeId } });
+	if (incoming.length > 1) {
+		const predecessorIds = incoming.map((e) => e.fromNodeId);
+		const completed = await prisma.itemStageProgress.findMany({
+			where: { despatchItemId, nodeId: { in: predecessorIds }, completedAt: { not: null } },
+		});
+		const completedSet = new Set(completed.map((p) => p.nodeId));
+		if (!predecessorIds.every((id) => completedSet.has(id))) return; // still waiting on a parallel path
+	}
+
+	const node = await prisma.stageNode.findUnique({ where: { id: nodeId } });
+	if (!node) return;
+	await prisma.itemStageProgress.create({
+		data: { despatchItemId, nodeId, stageName: node.name, order: await nextOrder(despatchItemId) },
+	});
+}
+
+// True once an item has no stage still in progress and no branch choice
+// left unresolved -- i.e. every path through its route has either reached
+// a dead end or is blocked waiting on a parallel sibling that hasn't
+// activated a join yet (which itself means nothing is currently actionable).
+export async function isRouteFullyComplete(despatchItemId: string): Promise<boolean> {
+	const incomplete = await prisma.itemStageProgress.count({ where: { despatchItemId, completedAt: null } });
+	if (incomplete > 0) return false;
+
+	const completedRows = await prisma.itemStageProgress.findMany({
+		where: { despatchItemId, completedAt: { not: null } },
+		select: { nodeId: true },
+	});
+	for (const row of completedRows) {
+		if (!row.nodeId) continue;
+		const node = await prisma.stageNode.findUnique({ where: { id: row.nodeId } });
+		if (!node || node.branchType !== "OR") continue;
+		const outgoing = await prisma.stageEdge.findMany({ where: { fromNodeId: row.nodeId } });
+		if (outgoing.length < 2) continue;
+		const anyTargetActivated = await prisma.itemStageProgress.findFirst({
+			where: { despatchItemId, nodeId: { in: outgoing.map((e) => e.toNodeId) } },
+		});
+		if (!anyTargetActivated) return false; // this OR choice is still pending
+	}
+	return true;
+}
+
 // Starts an item on a route: finds the template's start node and creates
 // the first ItemStageProgress row. Shared by the auto-instantiate path
 // (category has exactly one template) and the explicit choose-route path
@@ -47,88 +108,58 @@ export async function startRoute(despatchItemId: string, templateId: string) {
 
 	await prisma.despatchItem.update({ where: { id: despatchItemId }, data: { stageTemplateId: templateId } });
 	await prisma.itemStageProgress.create({
-		data: {
-			despatchItemId,
-			nodeId: startNode.id,
-			stageName: startNode.name,
-			order: 0,
-		},
+		data: { despatchItemId, nodeId: startNode.id, stageName: startNode.name, order: 0 },
 	});
 }
 
 export type AdvanceResult =
-	| { kind: "advanced"; isLastStage: false }
-	| { kind: "lastStage"; isLastStage: true }
+	| { kind: "advanced"; isRouteComplete: boolean }
 	| { kind: "needsBranchChoice"; options: { edgeId: string; toNodeName: string; label: string | null }[] };
 
-// Completes an item's current stage, then looks at that stage's outgoing
-// edges: none -> this was the last stage; exactly one -> auto-advances to
-// it immediately (feels identical to a plain linear route); two or more ->
-// stops and reports the branch options instead of guessing.
-export async function advanceCurrentStage(despatchItemId: string): Promise<AdvanceResult> {
-	const current = await prisma.itemStageProgress.findFirst({
-		where: { despatchItemId, completedAt: null },
-		orderBy: { order: "desc" },
-	});
-	if (!current) throw new Error("All stages for this item are already complete.");
+// Completes one specific in-progress stage (an item can have several active
+// at once under a parallel AND fan-out, so the caller must say which). Then
+// looks at that stage's own outgoing edges: none -> nothing to activate;
+// exactly one, or 2+ marked AND -> activates all of them (join-checked,
+// see activateNode); 2+ marked OR -> stops and reports the choice instead
+// of guessing.
+export async function completeStage(despatchItemId: string, progressId: string): Promise<AdvanceResult> {
+	const stage = await prisma.itemStageProgress.findUnique({ where: { id: progressId } });
+	if (!stage || stage.despatchItemId !== despatchItemId) throw new Error("Stage not found for this item.");
+	if (stage.completedAt) throw new Error("This stage is already complete.");
 
 	const now = new Date();
 	await prisma.itemStageProgress.update({
-		where: { id: current.id },
-		data: { startedAt: current.startedAt ?? now, completedAt: now },
+		where: { id: stage.id },
+		data: { startedAt: stage.startedAt ?? now, completedAt: now },
 	});
 
-	if (!current.nodeId) return { kind: "lastStage", isLastStage: true };
+	if (stage.nodeId) {
+		const node = await prisma.stageNode.findUnique({ where: { id: stage.nodeId } });
+		const edges = await prisma.stageEdge.findMany({ where: { fromNodeId: stage.nodeId }, include: { to: true } });
 
-	const edges = await prisma.stageEdge.findMany({
-		where: { fromNodeId: current.nodeId },
-		include: { to: true },
-	});
-
-	if (edges.length === 0) return { kind: "lastStage", isLastStage: true };
-
-	if (edges.length === 1) {
-		await prisma.itemStageProgress.create({
-			data: {
-				despatchItemId,
-				nodeId: edges[0].toNodeId,
-				stageName: edges[0].to.name,
-				order: current.order + 1,
-			},
-		});
-		return { kind: "advanced", isLastStage: false };
+		if (edges.length >= 2 && node?.branchType === "OR") {
+			return { kind: "needsBranchChoice", options: edges.map((e) => ({ edgeId: e.id, toNodeName: e.to.name, label: e.label })) };
+		}
+		for (const edge of edges) {
+			await activateNode(despatchItemId, edge.toNodeId);
+		}
 	}
 
-	return {
-		kind: "needsBranchChoice",
-		options: edges.map((e) => ({ edgeId: e.id, toNodeName: e.to.name, label: e.label })),
-	};
+	return { kind: "advanced", isRouteComplete: await isRouteFullyComplete(despatchItemId) };
 }
 
-// Creates the next stage for an item sitting at a branch point, once
-// someone has picked which edge to follow.
+// Activates the chosen next stage for an item sitting at an OR branch
+// point, once someone has picked which edge to follow.
 export async function chooseBranch(despatchItemId: string, edgeId: string) {
-	const current = await prisma.itemStageProgress.findFirst({
-		where: { despatchItemId },
-		orderBy: { order: "desc" },
-	});
-	if (!current || !current.completedAt) {
-		throw new Error("This item isn't waiting on a branch choice.");
-	}
+	const edge = await prisma.stageEdge.findUnique({ where: { id: edgeId } });
+	if (!edge) throw new Error("Branch not found.");
 
-	const edge = await prisma.stageEdge.findUnique({ where: { id: edgeId }, include: { to: true } });
-	if (!edge || edge.fromNodeId !== current.nodeId) {
-		throw new Error("That branch doesn't lead on from this item's current stage.");
-	}
-
-	await prisma.itemStageProgress.create({
-		data: {
-			despatchItemId,
-			nodeId: edge.toNodeId,
-			stageName: edge.to.name,
-			order: current.order + 1,
-		},
+	const fromCompleted = await prisma.itemStageProgress.findFirst({
+		where: { despatchItemId, nodeId: edge.fromNodeId, completedAt: { not: null } },
 	});
+	if (!fromCompleted) throw new Error("This item hasn't reached that branch point yet.");
+
+	await activateNode(despatchItemId, edge.toNodeId);
 }
 
 // Recursively collects every DespatchItem id under (and including) a given

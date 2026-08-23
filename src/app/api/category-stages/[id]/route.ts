@@ -11,6 +11,7 @@ const NodeSchema = z.object({
 	posX: z.number(),
 	posY: z.number(),
 	isStart: z.boolean(),
+	branchType: z.enum(["OR", "AND"]).default("OR"),
 });
 const EdgeSchema = z.object({
 	fromNodeId: z.string().min(1),
@@ -61,7 +62,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 				const idMap = new Map<string, string>();
 				for (const n of data.nodes) {
 					const node = await tx.stageNode.create({
-						data: { templateId: id, name: n.name, posX: n.posX, posY: n.posY, isStart: n.isStart },
+						data: { templateId: id, name: n.name, posX: n.posX, posY: n.posY, isStart: n.isStart, branchType: n.branchType },
 					});
 					idMap.set(n.id, node.id);
 				}
@@ -93,7 +94,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 				id: template.id,
 				category: template.category,
 				name: template.name,
-				nodes: template.nodes.map((n) => ({ id: n.id, name: n.name, posX: n.posX, posY: n.posY, isStart: n.isStart })),
+				nodes: template.nodes.map((n) => ({ id: n.id, name: n.name, posX: n.posX, posY: n.posY, isStart: n.isStart, branchType: n.branchType })),
 				edges: template.edges.map((e) => ({ id: e.id, fromNodeId: e.fromNodeId, toNodeId: e.toNodeId, label: e.label })),
 			},
 		});

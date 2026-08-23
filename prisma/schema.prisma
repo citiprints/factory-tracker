@@ -296,6 +296,14 @@ model StageNode {
   posY    Float   @default(0)
   isStart Boolean @default(false) // exactly one per template, enforced on save
 
+  // Only meaningful when this node has 2+ outgoing edges: "OR" (default) is
+  // an exclusive choice -- an item takes exactly one of the paths (e.g.
+  // different finishing options). "AND" is a parallel fan-out -- an item
+  // takes ALL of the paths at once, each independently trackable, and any
+  // node they later converge on won't activate until every incoming path
+  // has completed (see activateNode's join check in productionRouting.ts).
+  branchType String @default("OR")
+
   outgoingEdges StageEdge[] @relation("EdgeFrom")
   incomingEdges StageEdge[] @relation("EdgeTo")
 
