@@ -356,43 +356,61 @@ const flowNodeTypes = { stage: StageFlowNode };
 // route's canvas in the same (or another expanded) category -- previously
 // every keystroke rebuilt nodes/edges/callbacks from scratch for ALL of
 // them, which both felt sluggish and could interrupt an in-progress
-// connection drag gesture, making it seem like connecting nodes "didn't
-// work". `draftRef` lets the mutation callbacks stay referentially stable
-// (via useCallback) while still reading the latest draft when invoked.
-// `onChange` must be a stable (useCallback'd, key-taking) function from the
-// parent -- an inline `(d) => setDraft(key, d)` arrow would get a new
+// connection drag gesture. `onChange` must be a stable (useCallback'd,
+// key-taking) function from the parent -- an inline arrow would get a new
 // identity every parent render and defeat this memoization entirely, since
 // memo() bails out based on prop reference equality.
-const RouteFlowEditor = memo(function RouteFlowEditor({ draft, templateKey, onChange }: { draft: RouteDraft; templateKey: string; onChange: (key: string, d: RouteDraft) => void }) {
-	const draftRef = useRef(draft);
-	draftRef.current = draft;
-
+//
+// `onChange` takes an UPDATER function `(prev) => next`, applied through
+// the parent's setDrafts's own functional form -- not a raw draft computed
+// from a snapshot read here. This matters because clicking anywhere inside
+// a node (even a nodrag-classed button) also fires React Flow's own
+// node-selection change, which calls onNodesChange in the same synchronous
+// tick as e.g. onToggleStart. Both used to independently compute a full
+// replacement of `nodes` from the same pre-click snapshot, so
+// onNodesChange's version (which didn't know about the toggle that "just"
+// happened) silently overwrote it -- clicking the star or delete button
+// appeared to do nothing. Updater functions compose correctly through
+// React's queue instead: each one sees the result of the one before it.
+const RouteFlowEditor = memo(function RouteFlowEditor({ draft, templateKey, onChange }: { draft: RouteDraft; templateKey: string; onChange: (key: string, updater: (prev: RouteDraft) => RouteDraft) => void }) {
 	const onRename = useCallback((id: string, name: string) => {
-		const d = draftRef.current;
-		onChange(templateKey, { ...d, nodes: d.nodes.map(n => (n.id === id ? { ...n, name } : n)) });
+		onChange(templateKey, (d) => ({ ...d, nodes: d.nodes.map(n => (n.id === id ? { ...n, name } : n)) }));
 	}, [onChange, templateKey]);
 	const onToggleStart = useCallback((id: string) => {
-		const d = draftRef.current;
-		onChange(templateKey, { ...d, nodes: d.nodes.map(n => ({ ...n, isStart: n.id === id })) });
+		onChange(templateKey, (d) => ({ ...d, nodes: d.nodes.map(n => ({ ...n, isStart: n.id === id })) }));
 	}, [onChange, templateKey]);
 	const onDelete = useCallback((id: string) => {
-		const d = draftRef.current;
-		onChange(templateKey, {
+		onChange(templateKey, (d) => ({
 			name: d.name,
 			nodes: d.nodes.filter(n => n.id !== id),
 			edges: d.edges.filter(e => e.fromNodeId !== id && e.toNodeId !== id),
-		});
+		}));
 	}, [onChange, templateKey]);
 
 	const rfNodes: Node[] = useMemo(() => draft.nodes.map(n => ({
 		id: n.id,
 		type: "stage",
 		position: { x: n.posX, y: n.posY },
-		// Explicit width/height so React Flow can render immediately instead
-		// of waiting on a ResizeObserver measurement pass (which can get
-		// stuck leaving nodes permanently invisible in some environments).
-		width: 180,
-		height: 44,
+		// initialWidth/initialHeight (not width/height) -- gives React Flow a
+		// size to render immediately instead of waiting on a first
+		// measurement pass, but still lets real client-side measurement
+		// (ResizeObserver) run afterward and populate node.measured, which
+		// edge-path and handle-bounds computation actually depend on. Using
+		// plain width/height instead locks the node at that exact size
+		// forever and skips real measurement entirely -- edges silently
+		// never rendered because of this.
+		initialWidth: 180,
+		initialHeight: 44,
+		// Explicit handle bounds (position relative to the node, matching the
+		// library's default 6x6px handle centered on each edge -- see
+		// .react-flow__handle-left/-right in @xyflow/react's own stylesheet)
+		// so edge-path computation doesn't depend on a separate handle
+		// measurement pass completing, the same way initialWidth/Height
+		// avoids depending on node measurement completing.
+		handles: [
+			{ type: "target" as const, position: Position.Left, x: -3, y: 19, width: 6, height: 6 },
+			{ type: "source" as const, position: Position.Right, x: 177, y: 19, width: 6, height: 6 },
+		],
 		data: { name: n.name, isStart: n.isStart, onRename, onToggleStart, onDelete },
 	})), [draft.nodes, onRename, onToggleStart, onDelete]);
 	const rfEdges: Edge[] = useMemo(() => draft.edges.map(e => ({
@@ -400,22 +418,24 @@ const RouteFlowEditor = memo(function RouteFlowEditor({ draft, templateKey, onCh
 	})), [draft.edges]);
 
 	const onNodesChange = useCallback((changes: NodeChange[]) => {
-		const d = draftRef.current;
-		const currentRfNodes: Node[] = d.nodes.map(n => ({ id: n.id, type: "stage", position: { x: n.posX, y: n.posY }, data: {} }));
-		const updated = applyNodeChanges(changes, currentRfNodes);
-		onChange(templateKey, {
-			...d,
-			nodes: updated.map(n => {
-				const orig = d.nodes.find(dn => dn.id === n.id);
-				return { id: n.id, name: orig?.name ?? "", posX: n.position.x, posY: n.position.y, isStart: orig?.isStart ?? false };
-			}),
+		onChange(templateKey, (d) => {
+			const currentRfNodes: Node[] = d.nodes.map(n => ({ id: n.id, type: "stage", position: { x: n.posX, y: n.posY }, data: {} }));
+			const updated = applyNodeChanges(changes, currentRfNodes);
+			return {
+				...d,
+				nodes: updated.map(n => {
+					const orig = d.nodes.find(dn => dn.id === n.id);
+					return { id: n.id, name: orig?.name ?? "", posX: n.position.x, posY: n.position.y, isStart: orig?.isStart ?? false };
+				}),
+			};
 		});
 	}, [onChange, templateKey]);
 	const onEdgesChange = useCallback((changes: EdgeChange[]) => {
-		const d = draftRef.current;
-		const currentRfEdges: Edge[] = d.edges.map(e => ({ id: e.id, source: e.fromNodeId, target: e.toNodeId, label: e.label ?? undefined }));
-		const updated = applyEdgeChanges(changes, currentRfEdges);
-		onChange(templateKey, { ...d, edges: updated.map(e => ({ id: e.id, fromNodeId: e.source, toNodeId: e.target, label: ((e as Edge).label as string) ?? null })) });
+		onChange(templateKey, (d) => {
+			const currentRfEdges: Edge[] = d.edges.map(e => ({ id: e.id, source: e.fromNodeId, target: e.toNodeId, label: e.label ?? undefined }));
+			const updated = applyEdgeChanges(changes, currentRfEdges);
+			return { ...d, edges: updated.map(e => ({ id: e.id, fromNodeId: e.source, toNodeId: e.target, label: ((e as Edge).label as string) ?? null })) };
+		});
 	}, [onChange, templateKey]);
 	// No blocking window.prompt() here -- a synchronous native dialog fired
 	// from inside a React Flow connection callback is fragile (can throw or
@@ -425,18 +445,22 @@ const RouteFlowEditor = memo(function RouteFlowEditor({ draft, templateKey, onCh
 	// only (not used by routing logic) so they're just skipped on connect.
 	const onConnect = useCallback((connection: Connection) => {
 		if (!connection.source || !connection.target || connection.source === connection.target) return;
-		const d = draftRef.current;
-		onChange(templateKey, { ...d, edges: [...d.edges, { id: newNodeId(), fromNodeId: connection.source, toNodeId: connection.target, label: null }] });
+		onChange(templateKey, (d) => ({ ...d, edges: [...d.edges, { id: newNodeId(), fromNodeId: connection.source!, toNodeId: connection.target!, label: null }] }));
 	}, [onChange, templateKey]);
 	const addNode = useCallback(() => {
-		const d = draftRef.current;
-		const maxX = d.nodes.reduce((m, n) => Math.max(m, n.posX), 0);
-		onChange(templateKey, { ...d, nodes: [...d.nodes, { id: newNodeId(), name: "New stage", posX: maxX + 180, posY: 80, isStart: d.nodes.length === 0 }] });
+		onChange(templateKey, (d) => {
+			const maxX = d.nodes.reduce((m, n) => Math.max(m, n.posX), 0);
+			return { ...d, nodes: [...d.nodes, { id: newNodeId(), name: "New stage", posX: maxX + 180, posY: 80, isStart: d.nodes.length === 0 }] };
+		});
 	}, [onChange, templateKey]);
 
 	return (
 		<div>
-			<div style={{ height: 300 }} className="border border-line rounded-lg overflow-hidden">
+			{/* overflow-clip, not overflow-hidden: `hidden` creates a new CSS
+			    stacking context, which clips React Flow's SVG edge layer even
+			    though edges are technically within bounds -- `clip` clips
+			    visually without creating that stacking context. */}
+			<div style={{ height: 300 }} className="border border-line rounded-lg overflow-clip">
 				<ReactFlowProvider>
 					<ReactFlow
 						nodes={rfNodes}
@@ -495,11 +519,26 @@ function ProductionStagesSection() {
 		return drafts[key] ?? fallback;
 	}
 
-	// Stable identity (empty deps, functional setState) so RouteFlowEditor's
-	// memo() can actually bail out when a sibling route's draft changes.
-	const setDraft = useCallback((key: string, draft: RouteDraft) => {
-		setDrafts(prev => ({ ...prev, [key]: draft }));
-	}, []);
+	// Takes an updater `(prev) => next`, applied through setDrafts's own
+	// functional form -- NOT a raw draft computed from a snapshot read
+	// beforehand. Multiple updates queued within the same synchronous event
+	// (e.g. a node click that both toggles start via our own handler AND
+	// fires React Flow's own onNodesChange for its internal selection
+	// state) must each see the result of the one before it, or the last one
+	// queued silently wins and clobbers the others -- which is exactly what
+	// made the star/delete buttons look unresponsive.
+	// Only depends on `templates` (re-created solely when the fetched
+	// template list changes, not on every keystroke) so RouteFlowEditor's
+	// memo() still bails out correctly for interaction-heavy edits.
+	const setDraft = useCallback((key: string, updater: (prev: RouteDraft) => RouteDraft) => {
+		setDrafts(prev => {
+			const current = prev[key] ?? (() => {
+				const t = templates.find(t => t.id === key);
+				return t ? { name: t.name, nodes: t.nodes, edges: t.edges } : blankDraft();
+			})();
+			return { ...prev, [key]: updater(current) };
+		});
+	}, [templates]);
 
 	function startNewTemplate(category: string) {
 		setDrafts(prev => ({ ...prev, [`new-${category}`]: blankDraft() }));
@@ -598,7 +637,7 @@ function ProductionStagesSection() {
 													<input
 														className="input font-medium"
 														value={draft.name}
-														onChange={(e) => setDraft(key, { ...draft, name: e.target.value })}
+														onChange={(e) => { const value = e.target.value; setDraft(key, (d) => ({ ...d, name: value })); }}
 														placeholder="Route name, e.g. Standard"
 													/>
 													<button type="button" onClick={() => deleteTemplate(t.id)} className="text-danger text-sm shrink-0">
@@ -623,7 +662,7 @@ function ProductionStagesSection() {
 													<input
 														className="input font-medium"
 														value={draft.name}
-														onChange={(e) => setDraft(newKey, { ...draft, name: e.target.value })}
+														onChange={(e) => { const value = e.target.value; setDraft(newKey, (d) => ({ ...d, name: value })); }}
 														placeholder="Route name, e.g. Laminated"
 													/>
 													<RouteFlowEditor draft={draft} templateKey={newKey} onChange={setDraft} />
