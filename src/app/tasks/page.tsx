@@ -592,6 +592,7 @@ function TasksPageInner() {
 	type DespatchDraftRow = { name: string; quantity: string; unit: string; category: string; specFields: Record<string, any> };
 	const [despatchDraft, setDespatchDraft] = useState<DespatchDraftRow[]>([]);
 	const [addingDespatchItemToTaskId, setAddingDespatchItemToTaskId] = useState<string | null>(null);
+	const [savingDespatchItem, setSavingDespatchItem] = useState(false);
 	const [newDespatchName, setNewDespatchName] = useState("");
 	const [newDespatchQuantity, setNewDespatchQuantity] = useState("");
 	const [newDespatchUnit, setNewDespatchUnit] = useState("pcs");
@@ -734,6 +735,7 @@ function TasksPageInner() {
 	const AUTO_REFRESH_SECONDS = 120;
 	const [groupBy, setGroupBy] = useState<"none"|"customer"|"status"|"assignee">("none");
 	const [selectedIds, setSelectedIds] = useState<string[]>([]);
+	const [bulkActionBusy, setBulkActionBusy] = useState<string | null>(null); // "archive" | "delete" | "archive-completed"
 	const [anyDatePickerOpen, setAnyDatePickerOpen] = useState(false);
 	const countdownRef = useRef(AUTO_REFRESH_SECONDS);
 	const displayRef = useRef<HTMLSpanElement>(null);
@@ -1203,24 +1205,32 @@ function TasksPageInner() {
 	async function createDespatchItem(taskId: string, parentItemId?: string) {
 		if (!newDespatchName.trim() || !newDespatchQuantity.trim()) return;
 
-		const res = await fetch(`/api/tasks/${taskId}/despatch-items`, {
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({
-				items: [{
-					name: newDespatchName.trim(),
-					quantity: Number(newDespatchQuantity),
-					unit: newDespatchUnit.trim() || "pcs",
-					specFields: newDespatchCategory ? { ...newDespatchSpecFields, category: newDespatchCategory } : undefined,
-					parentItemId,
-				}]
-			})
-		});
+		setSavingDespatchItem(true);
+		try {
+			const res = await fetch(`/api/tasks/${taskId}/despatch-items`, {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					items: [{
+						name: newDespatchName.trim(),
+						quantity: Number(newDespatchQuantity),
+						unit: newDespatchUnit.trim() || "pcs",
+						specFields: newDespatchCategory ? { ...newDespatchSpecFields, category: newDespatchCategory } : undefined,
+						parentItemId,
+					}]
+				})
+			});
 
-		if (res.ok) {
-			resetNewDespatchFields();
-			setAddingDespatchItemToTaskId(null);
-			load();
+			if (res.ok) {
+				// Await the refresh before closing the form -- otherwise the form
+				// disappears (looking "done") while the item is still missing from
+				// the list for another moment.
+				await load();
+				resetNewDespatchFields();
+				setAddingDespatchItemToTaskId(null);
+			}
+		} finally {
+			setSavingDespatchItem(false);
 		}
 	}
 
@@ -1732,7 +1742,6 @@ function TasksPageInner() {
 			}).catch(() => {});
 		}
 
-		setSubmitting(false);
 		setTitle("");
 		setDesc("");
 		{
@@ -1750,7 +1759,12 @@ function TasksPageInner() {
 		setDespatchDraft([]);
 		setShowNewCustomerForm(false);
 		setNewCustomerForm(EMPTY_CUSTOMER_FORM);
-		load();
+		// Await the refresh before clearing "submitting" -- otherwise the
+		// button flips back to "Create task" and the form closes while the
+		// list is still stale, leaving a ~2s gap where the new task is
+		// nowhere to be seen even though creation already succeeded.
+		await load();
+		setSubmitting(false);
 		notifyDataChange();
 	}
 
@@ -2040,41 +2054,53 @@ function TasksPageInner() {
 								<button
 									type="button"
 									className="btn btn-outline btn-sm"
+									disabled={!!bulkActionBusy}
 									onClick={async () => {
 										if (!confirm(`Archive ${selectedIds.length} task${selectedIds.length !== 1 ? 's' : ''}?`)) return;
-										let failures = 0;
-										for (const id of selectedIds) {
-											const res = await fetch(`/api/tasks/${id}`, { method: "PATCH", headers: {"Content-Type":"application/json"}, body: JSON.stringify({ status: "ARCHIVED" }) });
-											if (!res.ok) failures++;
-										}
-										clearSelection();
-										load();
-										if (failures > 0) {
-											setError(`${failures} of ${selectedIds.length} task${failures !== 1 ? 's' : ''} couldn't be archived (you can only archive tasks assigned to you).`);
+										setBulkActionBusy("archive");
+										try {
+											let failures = 0;
+											for (const id of selectedIds) {
+												const res = await fetch(`/api/tasks/${id}`, { method: "PATCH", headers: {"Content-Type":"application/json"}, body: JSON.stringify({ status: "ARCHIVED" }) });
+												if (!res.ok) failures++;
+											}
+											clearSelection();
+											await load();
+											if (failures > 0) {
+												setError(`${failures} of ${selectedIds.length} task${failures !== 1 ? 's' : ''} couldn't be archived (you can only archive tasks assigned to you).`);
+											}
+										} finally {
+											setBulkActionBusy(null);
 										}
 									}}
 								>
-									Bulk Archive ({selectedIds.length})
+									{bulkActionBusy === "archive" ? "Archiving…" : `Bulk Archive (${selectedIds.length})`}
 								</button>
 								{isAdmin && (
 								<button
 									type="button"
 									className="btn btn-danger-outline btn-sm"
+									disabled={!!bulkActionBusy}
 									onClick={async () => {
 										if (!confirm(`Delete ${selectedIds.length} task${selectedIds.length !== 1 ? 's' : ''}? This cannot be undone.`)) return;
-										let failures = 0;
-										for (const id of selectedIds) {
-											const res = await fetch(`/api/tasks/${id}`, { method: "DELETE" });
-											if (!res.ok) failures++;
-										}
-										clearSelection();
-										load();
-										if (failures > 0) {
-											setError(`${failures} of ${selectedIds.length} task${failures !== 1 ? 's' : ''} couldn't be deleted.`);
+										setBulkActionBusy("delete");
+										try {
+											let failures = 0;
+											for (const id of selectedIds) {
+												const res = await fetch(`/api/tasks/${id}`, { method: "DELETE" });
+												if (!res.ok) failures++;
+											}
+											clearSelection();
+											await load();
+											if (failures > 0) {
+												setError(`${failures} of ${selectedIds.length} task${failures !== 1 ? 's' : ''} couldn't be deleted.`);
+											}
+										} finally {
+											setBulkActionBusy(null);
 										}
 									}}
 								>
-									Bulk Delete ({selectedIds.length})
+									{bulkActionBusy === "delete" ? "Deleting…" : `Bulk Delete (${selectedIds.length})`}
 								</button>
 								)}
 							</>
@@ -2093,19 +2119,25 @@ function TasksPageInner() {
 								return;
 							}
 							if (confirm(`Archive ${completedTasks.length} completed task${completedTasks.length !== 1 ? 's' : ''}?`)) {
-								for (const task of completedTasks) {
-									await fetch(`/api/tasks/${task.id}`, {
-										method: "PATCH",
-										headers: { "Content-Type": "application/json" },
-										body: JSON.stringify({ status: "ARCHIVED" })
-									});
+								setBulkActionBusy("archive-completed");
+								try {
+									for (const task of completedTasks) {
+										await fetch(`/api/tasks/${task.id}`, {
+											method: "PATCH",
+											headers: { "Content-Type": "application/json" },
+											body: JSON.stringify({ status: "ARCHIVED" })
+										});
+									}
+									await load();
+								} finally {
+									setBulkActionBusy(null);
 								}
-								load();
 							}
 						}}
 						className="btn btn-outline btn-sm"
+						disabled={!!bulkActionBusy}
 					>
-						Archive Completed ({filteredTasks.filter(t => t.status === "DONE").length})
+						{bulkActionBusy === "archive-completed" ? "Archiving…" : `Archive Completed (${filteredTasks.filter(t => t.status === "DONE").length})`}
 					</button>
 						<a className="btn btn-outline btn-sm" href="/api/export/tasks-csv">Export CSV</a>
 						<form action="/api/export/tasks-sheets" method="post" className="inline">
@@ -3051,7 +3083,9 @@ function TasksPageInner() {
 													onFieldChange={(key, value) => setNewDespatchSpecFields(v => ({ ...v, [key]: value }))}
 													dynamicCategories={dynamicCategories}
 												/>
-												<button type="submit" className="btn btn-accent btn-sm">Add</button>
+												<button type="submit" className="btn btn-accent btn-sm" disabled={savingDespatchItem}>
+													{savingDespatchItem ? "Adding…" : "Add"}
+												</button>
 											</form>
 										)}
 
