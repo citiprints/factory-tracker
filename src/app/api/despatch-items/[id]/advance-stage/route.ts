@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/session";
 import { logActivity } from "@/lib/audit";
-import { maybeArchiveTask } from "@/lib/tasks";
 import { completeStage } from "@/lib/productionRouting";
 import { z } from "zod";
 
@@ -61,33 +60,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 		return NextResponse.json({ needsBranchChoice: true, options: result.options, stage: completedStage });
 	}
 
-	const isRouteComplete = result.isRouteComplete;
-	let autoAdvanced = false;
-	if (isRouteComplete && despatchItem && despatchItem.status !== "PACKED" && despatchItem.status !== "DESPATCHED") {
-		// Same assembly gate as the PATCH route: a parent with incomplete
-		// components finishes its own checklist here, but doesn't auto-advance
-		// to Packed until they catch up. The UI offers a "Mark Packed" retry
-		// once all stages are done, which re-runs this same check.
-		const components = await prisma.despatchItem.findMany({
-			where: { parentItemId: id },
-			select: { status: true },
-		});
-		const blocked = components.some((c) => c.status !== "DESPATCHED");
-		if (!blocked) {
-			await prisma.despatchItem.update({ where: { id }, data: { status: "PACKED" } });
-			await logActivity({
-				entityType: "despatch_item",
-				entityId: id,
-				action: "STATUS_CHANGE",
-				actorId: user.id,
-				taskId: despatchItem.taskId,
-				before: { status: despatchItem.status },
-				after: { status: "PACKED" },
-			});
-			await maybeArchiveTask(despatchItem.taskId);
-			autoAdvanced = true;
-		}
-	}
-
-	return NextResponse.json({ stage: completedStage, isRouteComplete, autoAdvanced });
+	// Deliberately doesn't auto-advance status to Packed here, even once
+	// every stage is done -- that used to happen silently in this same
+	// request, which is exactly what made "what happens after the last
+	// checkbox?" so unclear. The UI now shows an explicit "All stages
+	// complete" banner instead, and Packed only happens once someone
+	// confirms it via the PATCH route (which carries its own assembly gate
+	// for components).
+	return NextResponse.json({ stage: completedStage, isRouteComplete: result.isRouteComplete });
 }

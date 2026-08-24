@@ -54,6 +54,8 @@ type ItemStage = {
 	order: number;
 	startedAt: string | null;
 	completedAt: string | null;
+	note: string | null;
+	taggedUserIds: string | null;
 };
 
 type DespatchItem = {
@@ -365,7 +367,14 @@ function ItemSpecFields({
 }
 
 type ItemFlowNodeState = "done" | "current" | "pending-choice" | "not-reached";
-type ItemFlowNodeData = { name: string; state: ItemFlowNodeState; onCheck?: () => void };
+type ItemFlowNodeData = {
+	name: string;
+	state: ItemFlowNodeState;
+	onCheck?: () => void;
+	pending?: boolean;
+	onOpenNotes?: () => void;
+	hasNotes?: boolean;
+};
 
 const ItemFlowNode = memo(function ItemFlowNode({ data }: { data: ItemFlowNodeData }) {
 	// onClick, not onChange -- the checkbox is fully controlled by `checked`
@@ -373,15 +382,30 @@ const ItemFlowNode = memo(function ItemFlowNode({ data }: { data: ItemFlowNodeDa
 	// were previously going nowhere lived in CSS, not here -- see the
 	// pointer-events override on .item-flow-node-label in globals.css.)
 	function handleClick() {
+		if (data.pending) return;
 		data.onCheck?.();
 	}
 	return (
-		<div className={`item-flow-node item-flow-node-${data.state}`}>
+		<div className={`item-flow-node item-flow-node-${data.state}${data.pending ? " item-flow-node-pending" : ""}`}>
 			<Handle type="target" position={Position.Left} />
 			<label className="item-flow-node-label nodrag nopan" onClick={handleClick}>
-				<input type="checkbox" className="nodrag nopan" checked={data.state === "done"} disabled={!data.onCheck} readOnly />
-				<span>{data.name}</span>
+				{data.pending ? (
+					<span className="item-flow-node-spinner nodrag nopan" aria-hidden="true" />
+				) : (
+					<input type="checkbox" className="nodrag nopan" checked={data.state === "done"} disabled={!data.onCheck} readOnly />
+				)}
+				<span className="item-flow-node-name">{data.name}</span>
 			</label>
+			{data.onOpenNotes && (
+				<button
+					type="button"
+					className={`item-flow-node-notes-btn nodrag nopan${data.hasNotes ? " item-flow-node-notes-btn-active" : ""}`}
+					onClick={(e) => { e.stopPropagation(); data.onOpenNotes?.(); }}
+					title="Notes & tags"
+				>
+					📝
+				</button>
+			)}
 			<Handle type="source" position={Position.Right} />
 		</div>
 	);
@@ -398,13 +422,15 @@ const itemFlowNodeTypes = { itemStage: ItemFlowNode };
 // also unchecked and clickable; checking one commits that path and greys
 // out the others), or "not-reached" (unchecked, disabled, greyed).
 const ItemRouteFlowchart = memo(function ItemRouteFlowchart({
-	progress, template, onCheckStage, onUncheckStage, onChooseBranch,
+	progress, template, onCheckStage, onUncheckStage, onChooseBranch, pendingKeys, onOpenNotes,
 }: {
 	progress: ItemStage[];
 	template: StageTemplateLite;
 	onCheckStage: (stageId: string) => void;
 	onUncheckStage: (stageId: string) => void;
 	onChooseBranch: (edgeId: string) => void;
+	pendingKeys: Set<string>;
+	onOpenNotes: (stage: ItemStage) => void;
 }) {
 	const progressByNodeId = useMemo(() => new Map(progress.filter(p => p.nodeId).map(p => [p.nodeId as string, p])), [progress]);
 
@@ -428,29 +454,33 @@ const ItemRouteFlowchart = memo(function ItemRouteFlowchart({
 		const row = progressByNodeId.get(n.id);
 		let state: ItemFlowNodeState;
 		let onCheck: (() => void) | undefined;
+		let pending = false;
 		if (row) {
 			state = row.completedAt ? "done" : "current";
 			onCheck = row.completedAt ? () => onUncheckStage(row.id) : () => onCheckStage(row.id);
+			pending = pendingKeys.has(row.id);
 		} else if (pendingChoiceTargets.has(n.id)) {
 			state = "pending-choice";
 			const edgeId = pendingChoiceTargets.get(n.id)!;
 			onCheck = () => onChooseBranch(edgeId);
+			pending = pendingKeys.has(edgeId);
 		} else {
 			state = "not-reached";
 		}
+		const hasNotes = !!row && (!!row.note || (!!row.taggedUserIds && JSON.parse(row.taggedUserIds).length > 0));
 		return {
 			id: n.id,
 			type: "itemStage",
 			position: { x: n.posX, y: n.posY },
-			initialWidth: 170,
+			initialWidth: 194,
 			initialHeight: 40,
 			handles: [
 				{ type: "target" as const, position: Position.Left, x: -3, y: 17, width: 6, height: 6 },
-				{ type: "source" as const, position: Position.Right, x: 167, y: 17, width: 6, height: 6 },
+				{ type: "source" as const, position: Position.Right, x: 191, y: 17, width: 6, height: 6 },
 			],
-			data: { name: n.name, state, onCheck },
+			data: { name: n.name, state, onCheck, pending, hasNotes, onOpenNotes: row ? () => onOpenNotes(row) : undefined },
 		};
-	}), [template, progressByNodeId, pendingChoiceTargets, onCheckStage, onUncheckStage, onChooseBranch]);
+	}), [template, progressByNodeId, pendingChoiceTargets, onCheckStage, onUncheckStage, onChooseBranch, pendingKeys, onOpenNotes]);
 
 	const rfEdges: RFEdge[] = useMemo(() => template.edges.map(e => ({
 		id: e.id, source: e.fromNodeId, target: e.toNodeId, label: e.label ?? undefined,
@@ -587,6 +617,17 @@ function TasksPageInner() {
 	const [despatchDraft, setDespatchDraft] = useState<DespatchDraftRow[]>([]);
 	const [addingDespatchItemToTaskId, setAddingDespatchItemToTaskId] = useState<string | null>(null);
 	const [savingDespatchItem, setSavingDespatchItem] = useState(false);
+	// Keyed by stage-progress id (checking/unchecking) or edge id (choosing a
+	// branch) -- lets a single node's checkbox show it's working without
+	// waiting for the full task list to reload, which is what made clicking
+	// a checkbox feel unresponsive.
+	const [pendingFlowActions, setPendingFlowActions] = useState<Set<string>>(new Set());
+	// The note/tag editor modal for one flowchart stage -- task-page-only,
+	// not part of the reusable route template.
+	const [notesEditorStage, setNotesEditorStage] = useState<{ itemId: string; stage: ItemStage } | null>(null);
+	const [notesDraft, setNotesDraft] = useState("");
+	const [taggedDraft, setTaggedDraft] = useState<string[]>([]);
+	const [savingNotes, setSavingNotes] = useState(false);
 	const [newDespatchName, setNewDespatchName] = useState("");
 	const [newDespatchQuantity, setNewDespatchQuantity] = useState("");
 	const [newDespatchUnit, setNewDespatchUnit] = useState("pcs");
@@ -1242,31 +1283,49 @@ function TasksPageInner() {
 		}
 	}
 
-	async function advanceStage(itemId: string, stageId: string) {
-		const res = await fetch(`/api/despatch-items/${itemId}/advance-stage`, {
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({ stageId }),
+	function setFlowActionPending(key: string, pending: boolean) {
+		setPendingFlowActions(prev => {
+			const next = new Set(prev);
+			if (pending) next.add(key); else next.delete(key);
+			return next;
 		});
-		if (res.ok) {
-			load();
-		} else {
-			const json = await res.json().catch(() => ({}));
-			setError(typeof json.error === "string" ? json.error : "Couldn't advance this item's stage.");
+	}
+
+	async function advanceStage(itemId: string, stageId: string) {
+		setFlowActionPending(stageId, true);
+		try {
+			const res = await fetch(`/api/despatch-items/${itemId}/advance-stage`, {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ stageId }),
+			});
+			if (res.ok) {
+				await load();
+			} else {
+				const json = await res.json().catch(() => ({}));
+				setError(typeof json.error === "string" ? json.error : "Couldn't advance this item's stage.");
+			}
+		} finally {
+			setFlowActionPending(stageId, false);
 		}
 	}
 
 	async function undoStage(itemId: string, stageId: string) {
-		const res = await fetch(`/api/despatch-items/${itemId}/undo-stage`, {
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({ stageId }),
-		});
-		if (res.ok) {
-			load();
-		} else {
-			const json = await res.json().catch(() => ({}));
-			setError(typeof json.error === "string" ? json.error : "Couldn't undo this stage.");
+		setFlowActionPending(stageId, true);
+		try {
+			const res = await fetch(`/api/despatch-items/${itemId}/undo-stage`, {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ stageId }),
+			});
+			if (res.ok) {
+				await load();
+			} else {
+				const json = await res.json().catch(() => ({}));
+				setError(typeof json.error === "string" ? json.error : "Couldn't undo this stage.");
+			}
+		} finally {
+			setFlowActionPending(stageId, false);
 		}
 	}
 
@@ -1286,16 +1345,48 @@ function TasksPageInner() {
 	}
 
 	async function chooseBranch(itemId: string, edgeId: string) {
-		const res = await fetch(`/api/despatch-items/${itemId}/choose-branch`, {
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({ edgeId }),
-		});
-		if (res.ok) {
-			load();
-		} else {
-			const json = await res.json().catch(() => ({}));
-			setError(typeof json.error === "string" ? json.error : "Couldn't choose this item's next stage.");
+		setFlowActionPending(edgeId, true);
+		try {
+			const res = await fetch(`/api/despatch-items/${itemId}/choose-branch`, {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ edgeId }),
+			});
+			if (res.ok) {
+				await load();
+			} else {
+				const json = await res.json().catch(() => ({}));
+				setError(typeof json.error === "string" ? json.error : "Couldn't choose this item's next stage.");
+			}
+		} finally {
+			setFlowActionPending(edgeId, false);
+		}
+	}
+
+	function openStageNotes(itemId: string, stage: ItemStage) {
+		setNotesEditorStage({ itemId, stage });
+		setNotesDraft(stage.note ?? "");
+		setTaggedDraft(stage.taggedUserIds ? JSON.parse(stage.taggedUserIds) : []);
+	}
+
+	async function saveStageNotes() {
+		if (!notesEditorStage) return;
+		setSavingNotes(true);
+		try {
+			const res = await fetch(`/api/despatch-items/${notesEditorStage.itemId}/stage-notes`, {
+				method: "PATCH",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ stageId: notesEditorStage.stage.id, note: notesDraft, taggedUserIds: taggedDraft }),
+			});
+			if (res.ok) {
+				setNotesEditorStage(null);
+				await load();
+			} else {
+				const json = await res.json().catch(() => ({}));
+				setError(typeof json.error === "string" ? json.error : "Couldn't save notes.");
+			}
+		} finally {
+			setSavingNotes(false);
 		}
 	}
 
@@ -1383,6 +1474,8 @@ function TasksPageInner() {
 						onCheckStage={(stageId) => advanceStage(item.id, stageId)}
 						onUncheckStage={(stageId) => undoStage(item.id, stageId)}
 						onChooseBranch={(edgeId) => chooseBranch(item.id, edgeId)}
+						pendingKeys={pendingFlowActions}
+						onOpenNotes={(stage) => openStageNotes(item.id, stage)}
 					/>
 				) : (
 					// Defensive fallback if the template couldn't be loaded (e.g.
@@ -1398,12 +1491,24 @@ function TasksPageInner() {
 				)}
 				{isFullyResolved && item.status !== "PACKED" && item.status !== "DESPATCHED" && (
 					// All stages checked off, but the item hasn't actually
-					// advanced yet -- either a normal one-click confirmation,
-					// or (if this item has components) a retry that will keep
-					// failing with a clear reason until they're all Despatched.
-					<button type="button" className="btn btn-outline btn-sm self-start" onClick={() => updateDespatchItemStatus(item.id, "PACKED")}>
-						Mark Packed
-					</button>
+					// advanced yet -- confirmed explicitly rather than moving it
+					// straight to Packed on the last checkbox, since that's an
+					// easy stage to misclick right after finishing a checklist.
+					// (If this item has components, confirming here can still
+					// come back with a clear error -- and stays retryable -- until
+					// they're all Despatched.)
+					<div className="flex items-center gap-2 rounded-md border border-ok bg-ok-soft px-3 py-2">
+						<span className="text-sm font-medium text-ok">All stages complete</span>
+						<button
+							type="button"
+							className="btn btn-accent btn-sm ml-auto"
+							onClick={() => {
+								if (confirm(`Mark "${item.name}" as Packed?`)) updateDespatchItemStatus(item.id, "PACKED");
+							}}
+						>
+							Mark Packed
+						</button>
+					</div>
 				)}
 			</div>
 		);
@@ -2516,7 +2621,7 @@ function TasksPageInner() {
 										>
 											💬 {expandedComments.has(t.id) ? "Hide comments" : "Comments"}
 											{!!t.unreadCommentCount && (
-												<span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 inline-flex items-center justify-center rounded-full bg-red-600 text-white text-[10px] font-semibold leading-none">
+												<span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 inline-flex items-center justify-center rounded-md bg-red-600 text-white text-[10px] font-semibold leading-none">
 													{t.unreadCommentCount > 9 ? "9+" : t.unreadCommentCount}
 												</span>
 											)}
@@ -3275,6 +3380,52 @@ function TasksPageInner() {
 					</div>
 				);
 			})()}
+
+			{/* Stage Notes & Tags Modal (task page only -- not part of the route template) */}
+			{notesEditorStage && (
+				<div className="fixed inset-0 bg-black/55 backdrop-blur-[2px] flex items-center justify-center z-50 p-3">
+					<div className="card card-pad max-w-md w-full mx-4 max-h-[90vh] overflow-y-auto !bg-[var(--raised)] shadow-lg">
+						<div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+							<h2 className="text-lg font-semibold">{notesEditorStage.stage.stageName}</h2>
+							<button type="button" className="text-gray-500 hover:text-gray-700" onClick={() => setNotesEditorStage(null)}>✕</button>
+						</div>
+						<div className="space-y-4">
+							<div>
+								<label className="field-label">Note</label>
+								<textarea
+									className="input text-sm"
+									rows={3}
+									value={notesDraft}
+									onChange={(e) => setNotesDraft(e.target.value)}
+									placeholder="Add a note for this stage…"
+								/>
+							</div>
+							<div>
+								<label className="field-label">Tag people</label>
+								<div className="flex flex-wrap gap-2 mt-1">
+									{users.map(u => (
+										<label key={u.id} className="flex items-center gap-1.5 text-xs border border-line rounded-md px-2 py-1 cursor-pointer">
+											<input
+												type="checkbox"
+												checked={taggedDraft.includes(u.id)}
+												onChange={(e) => setTaggedDraft(prev => e.target.checked ? [...prev, u.id] : prev.filter(id => id !== u.id))}
+											/>
+											{u.name}
+										</label>
+									))}
+								</div>
+							</div>
+							{error && <p className="text-sm text-danger">{error}</p>}
+							<div className="flex gap-2">
+								<button type="button" className="btn btn-accent btn-sm" disabled={savingNotes} onClick={saveStageNotes}>
+									{savingNotes ? "Saving…" : "Save"}
+								</button>
+								<button type="button" className="btn btn-outline btn-sm" onClick={() => setNotesEditorStage(null)}>Cancel</button>
+							</div>
+						</div>
+					</div>
+				</div>
+			)}
 
 			{/* View Task Modal */}
 			{viewingId && (() => {

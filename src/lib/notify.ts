@@ -6,7 +6,7 @@ type NotifyInput = {
   userId: string;
   title: string;
   body: string;
-  type?: "TASK_ASSIGNED" | "SHIFT_ASSIGNED" | "TASK_DUE" | "GENERAL" | "COMMENT";
+  type?: "TASK_ASSIGNED" | "SHIFT_ASSIGNED" | "TASK_DUE" | "GENERAL" | "COMMENT" | "STAGE_TAGGED";
   linkPath?: string;
   taskId?: string;
 };

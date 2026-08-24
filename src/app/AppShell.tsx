@@ -390,7 +390,7 @@ export default function AppShell({
                     </span>
                     <span className="flex-1">{item.label}</span>
                     {badge > 0 && (
-                      <span className="min-w-5 h-5 px-1.5 rounded-full bg-accent text-on-accent text-[11px] font-semibold font-mono inline-flex items-center justify-center">
+                      <span className="min-w-5 h-5 px-1.5 rounded-md bg-accent text-on-accent text-[11px] font-semibold font-mono inline-flex items-center justify-center">
                         {badge > 99 ? "99+" : badge}
                       </span>
                     )}
@@ -480,7 +480,7 @@ export default function AppShell({
                   <span className="relative inline-flex">
                     <Icon d={ICONS[t.icon]} />
                     {badge > 0 && (
-                      <span className="absolute -top-1.5 -right-3 min-w-4 h-4 px-1 rounded-full bg-accent text-on-accent text-[10px] font-semibold font-mono inline-flex items-center justify-center leading-none">
+                      <span className="absolute -top-1.5 -right-3 min-w-4 h-4 px-1 rounded-md bg-accent text-on-accent text-[10px] font-semibold font-mono inline-flex items-center justify-center leading-none">
                         {badge > 99 ? "99+" : badge}
                       </span>
                     )}

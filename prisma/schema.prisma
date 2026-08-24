@@ -139,7 +139,7 @@ model Notification {
   user      User      @relation(fields: [userId], references: [id])
   title     String
   body      String
-  type      String    @default("GENERAL") // TASK_ASSIGNED | SHIFT_ASSIGNED | TASK_DUE | GENERAL | COMMENT
+  type      String    @default("GENERAL") // TASK_ASSIGNED | SHIFT_ASSIGNED | TASK_DUE | GENERAL | COMMENT | STAGE_TAGGED
   linkPath  String? // e.g. "/tasks/abc123"
   taskId    String? // set for COMMENT notifications, used to compute per-task unread counts
   readAt    DateTime?
@@ -347,6 +347,14 @@ model ItemStageProgress {
   order       Int       @default(0)
   startedAt   DateTime?
   completedAt DateTime?
+
+  // Task-page-only annotations on this specific item's stage (not part of
+  // the reusable route template, so they never appear in Settings) -- a free
+  // note, plus who's tagged on it, stored as a JSON array of user ids
+  // (same lightweight pattern as DespatchItem.specFields) rather than a
+  // separate join table, since this is a small, rarely-queried per-row list.
+  note          String?
+  taggedUserIds String?
 
   @@unique([despatchItemId, order])
   @@index([despatchItemId])
