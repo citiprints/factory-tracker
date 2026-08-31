@@ -6,7 +6,7 @@ import { useCurrentUser } from "../UserContext";
 import TaskComments from "@/components/TaskComments";
 import { useRefreshCounts } from "../CountsContext";
 import { CustomerFields, EMPTY_CUSTOMER_FORM, customerFormToPayload, type CustomerFormState } from "@/components/CustomerFields";
-import { despatchItemStatusChipClass } from "@/lib/despatchItemStatus";
+import { despatchItemStatusChipClass, DESPATCH_ITEM_STATUS_LABELS } from "@/lib/despatchItemStatus";
 import { BUILT_IN_ITEM_CATEGORIES } from "@/lib/constants";
 import { ReactFlow, Background, Handle, Position, ReactFlowProvider, type Node as RFNode, type Edge as RFEdge } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
@@ -590,6 +590,28 @@ const TaskSheetView = memo(function TaskSheetView({
 		onPatch(t.id, { assigneeIds: next });
 	}
 
+	// One row per despatch item (not per task) -- each item's name/type/qty/
+	// status gets its own real cell instead of being crammed as text into
+	// one "Items" cell. The task-level columns (title/status/etc.) span
+	// every item row belonging to that task via rowSpan, so a 3-item task
+	// still reads as one task, just with three item rows under it. A task
+	// with no items yet still gets a single row, item columns blank.
+	type SheetRow = { task: Task; item: DespatchItem | null; isFirstOfTask: boolean; rowSpan: number };
+	const rows: SheetRow[] = useMemo(() => {
+		const flat: SheetRow[] = [];
+		for (const t of sorted) {
+			const items = t.despatchItems ?? [];
+			if (items.length === 0) {
+				flat.push({ task: t, item: null, isFirstOfTask: true, rowSpan: 1 });
+			} else {
+				items.forEach((item, idx) => {
+					flat.push({ task: t, item, isFirstOfTask: idx === 0, rowSpan: items.length });
+				});
+			}
+		}
+		return flat;
+	}, [sorted]);
+
 	function SortHeader({ column, children }: { column: SheetSortColumn; children: React.ReactNode }) {
 		const active = sort?.column === column;
 		return (
@@ -614,111 +636,108 @@ const TaskSheetView = memo(function TaskSheetView({
 						<SortHeader column="assignee">Assignees</SortHeader>
 						<SortHeader column="dueAt">Due</SortHeader>
 						<SortHeader column="jobNumber">Job #</SortHeader>
-						<th className="text-left text-xs font-semibold uppercase tracking-wide text-muted px-2 py-2 whitespace-nowrap">Items</th>
+						<th className="text-left text-xs font-semibold uppercase tracking-wide text-muted px-2 py-2 whitespace-nowrap border-l border-line">Item</th>
+						<th className="text-left text-xs font-semibold uppercase tracking-wide text-muted px-2 py-2 whitespace-nowrap">Type</th>
+						<th className="text-left text-xs font-semibold uppercase tracking-wide text-muted px-2 py-2 whitespace-nowrap">Qty</th>
+						<th className="text-left text-xs font-semibold uppercase tracking-wide text-muted px-2 py-2 whitespace-nowrap">Item Status</th>
 					</tr>
 				</thead>
 				<tbody>
-					{sorted.map(t => {
-						const itemCount = t.despatchItems?.length ?? 0;
-						const despatchedCount = t.despatchItems?.filter(i => i.status === "DESPATCHED").length ?? 0;
+					{rows.map(row => {
+						const t = row.task;
+						const item = row.item;
 						return (
-							<tr key={t.id} className="border-t border-line hover:bg-wash/60">
-								<td className="px-2 py-1.5 min-w-[12rem]">
-									{isAdmin ? (
-										<input
-											key={t.id + t.title}
-											defaultValue={t.title}
-											className="w-full bg-transparent border-0 focus:bg-surface focus:ring-1 focus:ring-line-strong rounded px-1 py-0.5 outline-none"
-											onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== t.title) onPatch(t.id, { title: v }); }}
-											onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
-										/>
-									) : (
-										<button type="button" className="text-left hover:underline" onClick={() => onOpenTask(t.id)}>{t.title}</button>
-									)}
-								</td>
-								<td className="px-2 py-1.5 text-muted whitespace-nowrap">{t.customerRef?.name ?? "—"}</td>
-								<td className="px-2 py-1.5 whitespace-nowrap">
-									<select
-										className="bg-transparent border-0 focus:ring-1 focus:ring-line-strong rounded px-1 py-0.5 outline-none text-xs"
-										value={t.status}
-										onChange={(e) => onPatch(t.id, { status: e.target.value })}
-									>
-										{TASK_STATUS_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-									</select>
-								</td>
-								<td className="px-2 py-1.5 whitespace-nowrap">
-									{isAdmin ? (
-										<select
-											className="bg-transparent border-0 focus:ring-1 focus:ring-line-strong rounded px-1 py-0.5 outline-none text-xs"
-											value={t.priority}
-											onChange={(e) => onPatch(t.id, { priority: e.target.value })}
-										>
-											{TASK_PRIORITY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-										</select>
-									) : (
-										<span className="text-xs text-muted">{TASK_PRIORITY_OPTIONS.find(o => o.value === t.priority)?.label}</span>
-									)}
-								</td>
-								<td className="px-2 py-1.5 relative min-w-[9rem]">
-									{isAdmin ? (
-										<>
-											<button
-												type="button"
-												className="text-left w-full truncate hover:underline"
-												onClick={() => setEditingAssigneesFor(prev => prev === t.id ? null : t.id)}
-											>
-												{t.assignments?.length ? t.assignments.map(a => a.user.name).join(", ") : <span className="text-muted">Unassigned</span>}
-											</button>
-											{editingAssigneesFor === t.id && (
-												<>
-													<div className="fixed inset-0 z-40" onClick={() => setEditingAssigneesFor(null)} />
-													<div className="absolute z-50 top-full left-0 mt-1 w-52 bg-[var(--raised)] border border-line rounded-md shadow-lg p-2 space-y-1 max-h-56 overflow-y-auto">
-														{users.map(u => (
-															<label key={u.id} className="flex items-center gap-2 text-xs cursor-pointer py-0.5">
-																<input
-																	type="checkbox"
-																	checked={!!t.assignments?.some(a => a.user.id === u.id)}
-																	onChange={(e) => toggleAssignee(t, u.id, e.target.checked)}
-																/>
-																{u.name}
-															</label>
-														))}
-													</div>
-												</>
+							<tr key={t.id + (item?.id ?? "none")} className={`hover:bg-wash/60 ${row.isFirstOfTask ? "border-t border-line" : ""}`}>
+								{row.isFirstOfTask && (
+									<>
+										<td className="px-2 py-1.5 min-w-[12rem] align-top" rowSpan={row.rowSpan}>
+											{isAdmin ? (
+												<input
+													key={t.id + t.title}
+													defaultValue={t.title}
+													className="w-full bg-transparent border-0 focus:bg-surface focus:ring-1 focus:ring-line-strong rounded px-1 py-0.5 outline-none"
+													onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== t.title) onPatch(t.id, { title: v }); }}
+													onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+												/>
+											) : (
+												<button type="button" className="text-left hover:underline" onClick={() => onOpenTask(t.id)}>{t.title}</button>
 											)}
-										</>
-									) : (
-										<span className="truncate block">{t.assignments?.length ? t.assignments.map(a => a.user.name).join(", ") : "—"}</span>
-									)}
-								</td>
+										</td>
+										<td className="px-2 py-1.5 text-muted whitespace-nowrap align-top" rowSpan={row.rowSpan}>{t.customerRef?.name ?? "—"}</td>
+										<td className="px-2 py-1.5 whitespace-nowrap align-top" rowSpan={row.rowSpan}>
+											<select
+												className="bg-transparent border-0 focus:ring-1 focus:ring-line-strong rounded px-1 py-0.5 outline-none text-xs"
+												value={t.status}
+												onChange={(e) => onPatch(t.id, { status: e.target.value })}
+											>
+												{TASK_STATUS_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+											</select>
+										</td>
+										<td className="px-2 py-1.5 whitespace-nowrap align-top" rowSpan={row.rowSpan}>
+											{isAdmin ? (
+												<select
+													className="bg-transparent border-0 focus:ring-1 focus:ring-line-strong rounded px-1 py-0.5 outline-none text-xs"
+													value={t.priority}
+													onChange={(e) => onPatch(t.id, { priority: e.target.value })}
+												>
+													{TASK_PRIORITY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+												</select>
+											) : (
+												<span className="text-xs text-muted">{TASK_PRIORITY_OPTIONS.find(o => o.value === t.priority)?.label}</span>
+											)}
+										</td>
+										<td className="px-2 py-1.5 relative min-w-[9rem] align-top" rowSpan={row.rowSpan}>
+											{isAdmin ? (
+												<>
+													<button
+														type="button"
+														className="text-left w-full truncate hover:underline"
+														onClick={() => setEditingAssigneesFor(prev => prev === t.id ? null : t.id)}
+													>
+														{t.assignments?.length ? t.assignments.map(a => a.user.name).join(", ") : <span className="text-muted">Unassigned</span>}
+													</button>
+													{editingAssigneesFor === t.id && (
+														<>
+															<div className="fixed inset-0 z-40" onClick={() => setEditingAssigneesFor(null)} />
+															<div className="absolute z-50 top-full left-0 mt-1 w-52 bg-[var(--raised)] border border-line rounded-md shadow-lg p-2 space-y-1 max-h-56 overflow-y-auto">
+																{users.map(u => (
+																	<label key={u.id} className="flex items-center gap-2 text-xs cursor-pointer py-0.5">
+																		<input
+																			type="checkbox"
+																			checked={!!t.assignments?.some(a => a.user.id === u.id)}
+																			onChange={(e) => toggleAssignee(t, u.id, e.target.checked)}
+																		/>
+																		{u.name}
+																	</label>
+																))}
+															</div>
+														</>
+													)}
+												</>
+											) : (
+												<span className="truncate block">{t.assignments?.length ? t.assignments.map(a => a.user.name).join(", ") : "—"}</span>
+											)}
+										</td>
+										<td className="px-2 py-1.5 whitespace-nowrap align-top" rowSpan={row.rowSpan}>
+											{isAdmin ? (
+												<input
+													type="date"
+													className="bg-transparent border-0 focus:ring-1 focus:ring-line-strong rounded px-1 py-0.5 outline-none text-xs"
+													defaultValue={t.dueAt ? t.dueAt.slice(0, 10) : ""}
+													onChange={(e) => { if (e.target.value) onPatch(t.id, { dueAt: new Date(e.target.value).toISOString() }); }}
+												/>
+											) : (
+												<span className="text-xs text-muted">{t.dueAt ? new Date(t.dueAt).toLocaleDateString() : "—"}</span>
+											)}
+										</td>
+										<td className="px-2 py-1.5 text-muted whitespace-nowrap align-top" rowSpan={row.rowSpan}>{t.jobNumber || "—"}</td>
+									</>
+								)}
+								<td className="px-2 py-1.5 whitespace-nowrap border-l border-line">{item?.name ?? <span className="text-muted">—</span>}</td>
+								<td className="px-2 py-1.5 text-muted whitespace-nowrap">{item?.specFields?.category ?? (item ? "—" : "")}</td>
+								<td className="px-2 py-1.5 text-muted whitespace-nowrap">{item ? `${item.quantity} ${item.unit}` : ""}</td>
 								<td className="px-2 py-1.5 whitespace-nowrap">
-									{isAdmin ? (
-										<input
-											type="date"
-											className="bg-transparent border-0 focus:ring-1 focus:ring-line-strong rounded px-1 py-0.5 outline-none text-xs"
-											defaultValue={t.dueAt ? t.dueAt.slice(0, 10) : ""}
-											onChange={(e) => { if (e.target.value) onPatch(t.id, { dueAt: new Date(e.target.value).toISOString() }); }}
-										/>
-									) : (
-										<span className="text-xs text-muted">{t.dueAt ? new Date(t.dueAt).toLocaleDateString() : "—"}</span>
-									)}
-								</td>
-								<td className="px-2 py-1.5 text-muted whitespace-nowrap">{t.jobNumber || "—"}</td>
-								<td className="px-2 py-1.5 min-w-[16rem]">
-									{itemCount > 0 ? (
-										<div className="space-y-0.5">
-											<div className="text-[11px] text-muted">{despatchedCount}/{itemCount} despatched</div>
-											{t.despatchItems!.map(i => (
-												<div key={i.id} className="text-xs whitespace-nowrap">
-													{i.name}
-													{i.specFields?.category ? <span className="text-muted"> ({i.specFields.category})</span> : null}
-													<span className="text-muted"> — {i.quantity} {i.unit}</span>
-												</div>
-											))}
-										</div>
-									) : (
-										<span className="text-muted">—</span>
-									)}
+									{item ? <span className={despatchItemStatusChipClass(item.status)}>{DESPATCH_ITEM_STATUS_LABELS[item.status] ?? item.status}</span> : ""}
 								</td>
 							</tr>
 						);
