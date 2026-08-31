@@ -704,7 +704,22 @@ const TaskSheetView = memo(function TaskSheetView({
 									)}
 								</td>
 								<td className="px-2 py-1.5 text-muted whitespace-nowrap">{t.jobNumber || "—"}</td>
-								<td className="px-2 py-1.5 text-muted whitespace-nowrap">{despatchedCount}/{itemCount}</td>
+								<td className="px-2 py-1.5 min-w-[16rem]">
+									{itemCount > 0 ? (
+										<div className="space-y-0.5">
+											<div className="text-[11px] text-muted">{despatchedCount}/{itemCount} despatched</div>
+											{t.despatchItems!.map(i => (
+												<div key={i.id} className="text-xs whitespace-nowrap">
+													{i.name}
+													{i.specFields?.category ? <span className="text-muted"> ({i.specFields.category})</span> : null}
+													<span className="text-muted"> — {i.quantity} {i.unit}</span>
+												</div>
+											))}
+										</div>
+									) : (
+										<span className="text-muted">—</span>
+									)}
+								</td>
 							</tr>
 						);
 					})}
