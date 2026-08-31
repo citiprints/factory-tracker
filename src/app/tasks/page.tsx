@@ -516,6 +516,204 @@ const ItemRouteFlowchart = memo(function ItemRouteFlowchart({
 	);
 });
 
+const TASK_STATUS_OPTIONS: { value: Task["status"]; label: string }[] = [
+	{ value: "TODO", label: "To do" },
+	{ value: "IN_PROGRESS", label: "In progress" },
+	{ value: "BLOCKED", label: "Blocked" },
+	{ value: "DONE", label: "Done" },
+	{ value: "CANCELLED", label: "Cancelled" },
+	{ value: "CLIENT_TO_REVERT", label: "Client to revert" },
+	{ value: "OTHERS", label: "Others" },
+	{ value: "ARCHIVED", label: "Archived" },
+];
+const TASK_PRIORITY_OPTIONS: { value: Task["priority"]; label: string }[] = [
+	{ value: "LOW", label: "Low" },
+	{ value: "MEDIUM", label: "Medium" },
+	{ value: "HIGH", label: "High" },
+	{ value: "URGENT", label: "Urgent" },
+];
+
+type SheetSortColumn = "title" | "customer" | "status" | "priority" | "assignee" | "dueAt" | "jobNumber";
+type SheetSort = { column: SheetSortColumn; dir: "asc" | "desc" };
+
+// Dense, scannable, spreadsheet-style alternative to the card list -- one
+// row per task, most fields editable right in the cell (status/priority/due
+// date/title/assignees), sortable by column header. Deliberately doesn't
+// re-implement grouping (the card view's Group by already covers that) or
+// bulk selection (the card view's checkboxes above still work regardless of
+// which view is showing).
+const TaskSheetView = memo(function TaskSheetView({
+	tasks, users, isAdmin, onPatch, onOpenTask,
+}: {
+	tasks: Task[];
+	users: { id: string; name: string }[];
+	isAdmin: boolean;
+	onPatch: (taskId: string, data: Record<string, any>) => void;
+	onOpenTask: (taskId: string) => void;
+}) {
+	const [sort, setSort] = useState<SheetSort | null>(null);
+	const [editingAssigneesFor, setEditingAssigneesFor] = useState<string | null>(null);
+
+	function toggleSort(column: SheetSortColumn) {
+		setSort(prev => {
+			if (!prev || prev.column !== column) return { column, dir: "asc" };
+			if (prev.dir === "asc") return { column, dir: "desc" };
+			return null;
+		});
+	}
+
+	const sorted = useMemo(() => {
+		if (!sort) return tasks;
+		const dirMul = sort.dir === "asc" ? 1 : -1;
+		function key(t: Task): string | number {
+			switch (sort!.column) {
+				case "title": return t.title.toLowerCase();
+				case "customer": return (t.customerRef?.name ?? "").toLowerCase();
+				case "status": return t.status;
+				case "priority": return { LOW: 0, MEDIUM: 1, HIGH: 2, URGENT: 3 }[t.priority] ?? 0;
+				case "assignee": return (t.assignments?.[0]?.user.name ?? "").toLowerCase();
+				case "dueAt": return t.dueAt ? new Date(t.dueAt).getTime() : Number.MAX_SAFE_INTEGER;
+				case "jobNumber": return (t.jobNumber ?? "").toLowerCase();
+			}
+		}
+		return [...tasks].sort((a, b) => {
+			const ka = key(a), kb = key(b);
+			if (ka < kb) return -1 * dirMul;
+			if (ka > kb) return 1 * dirMul;
+			return 0;
+		});
+	}, [tasks, sort]);
+
+	function toggleAssignee(t: Task, userId: string, checked: boolean) {
+		const current = (t.assignments ?? []).map(a => a.user.id);
+		const next = checked ? [...current, userId] : current.filter(id => id !== userId);
+		onPatch(t.id, { assigneeIds: next });
+	}
+
+	function SortHeader({ column, children }: { column: SheetSortColumn; children: React.ReactNode }) {
+		const active = sort?.column === column;
+		return (
+			<th
+				className="text-left text-xs font-semibold uppercase tracking-wide text-muted px-2 py-2 cursor-pointer select-none whitespace-nowrap"
+				onClick={() => toggleSort(column)}
+			>
+				{children}{active ? (sort!.dir === "asc" ? " ▲" : " ▼") : ""}
+			</th>
+		);
+	}
+
+	return (
+		<div className="border border-line rounded-lg overflow-x-auto">
+			<table className="w-full text-sm border-collapse">
+				<thead className="bg-wash sticky top-0 z-10">
+					<tr>
+						<SortHeader column="title">Title</SortHeader>
+						<SortHeader column="customer">Customer</SortHeader>
+						<SortHeader column="status">Status</SortHeader>
+						<SortHeader column="priority">Priority</SortHeader>
+						<SortHeader column="assignee">Assignees</SortHeader>
+						<SortHeader column="dueAt">Due</SortHeader>
+						<SortHeader column="jobNumber">Job #</SortHeader>
+						<th className="text-left text-xs font-semibold uppercase tracking-wide text-muted px-2 py-2 whitespace-nowrap">Items</th>
+					</tr>
+				</thead>
+				<tbody>
+					{sorted.map(t => {
+						const itemCount = t.despatchItems?.length ?? 0;
+						const despatchedCount = t.despatchItems?.filter(i => i.status === "DESPATCHED").length ?? 0;
+						return (
+							<tr key={t.id} className="border-t border-line hover:bg-wash/60">
+								<td className="px-2 py-1.5 min-w-[12rem]">
+									{isAdmin ? (
+										<input
+											key={t.id + t.title}
+											defaultValue={t.title}
+											className="w-full bg-transparent border-0 focus:bg-surface focus:ring-1 focus:ring-line-strong rounded px-1 py-0.5 outline-none"
+											onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== t.title) onPatch(t.id, { title: v }); }}
+											onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+										/>
+									) : (
+										<button type="button" className="text-left hover:underline" onClick={() => onOpenTask(t.id)}>{t.title}</button>
+									)}
+								</td>
+								<td className="px-2 py-1.5 text-muted whitespace-nowrap">{t.customerRef?.name ?? "—"}</td>
+								<td className="px-2 py-1.5 whitespace-nowrap">
+									<select
+										className="bg-transparent border-0 focus:ring-1 focus:ring-line-strong rounded px-1 py-0.5 outline-none text-xs"
+										value={t.status}
+										onChange={(e) => onPatch(t.id, { status: e.target.value })}
+									>
+										{TASK_STATUS_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+									</select>
+								</td>
+								<td className="px-2 py-1.5 whitespace-nowrap">
+									{isAdmin ? (
+										<select
+											className="bg-transparent border-0 focus:ring-1 focus:ring-line-strong rounded px-1 py-0.5 outline-none text-xs"
+											value={t.priority}
+											onChange={(e) => onPatch(t.id, { priority: e.target.value })}
+										>
+											{TASK_PRIORITY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+										</select>
+									) : (
+										<span className="text-xs text-muted">{TASK_PRIORITY_OPTIONS.find(o => o.value === t.priority)?.label}</span>
+									)}
+								</td>
+								<td className="px-2 py-1.5 relative min-w-[9rem]">
+									{isAdmin ? (
+										<>
+											<button
+												type="button"
+												className="text-left w-full truncate hover:underline"
+												onClick={() => setEditingAssigneesFor(prev => prev === t.id ? null : t.id)}
+											>
+												{t.assignments?.length ? t.assignments.map(a => a.user.name).join(", ") : <span className="text-muted">Unassigned</span>}
+											</button>
+											{editingAssigneesFor === t.id && (
+												<>
+													<div className="fixed inset-0 z-40" onClick={() => setEditingAssigneesFor(null)} />
+													<div className="absolute z-50 top-full left-0 mt-1 w-52 bg-[var(--raised)] border border-line rounded-md shadow-lg p-2 space-y-1 max-h-56 overflow-y-auto">
+														{users.map(u => (
+															<label key={u.id} className="flex items-center gap-2 text-xs cursor-pointer py-0.5">
+																<input
+																	type="checkbox"
+																	checked={!!t.assignments?.some(a => a.user.id === u.id)}
+																	onChange={(e) => toggleAssignee(t, u.id, e.target.checked)}
+																/>
+																{u.name}
+															</label>
+														))}
+													</div>
+												</>
+											)}
+										</>
+									) : (
+										<span className="truncate block">{t.assignments?.length ? t.assignments.map(a => a.user.name).join(", ") : "—"}</span>
+									)}
+								</td>
+								<td className="px-2 py-1.5 whitespace-nowrap">
+									{isAdmin ? (
+										<input
+											type="date"
+											className="bg-transparent border-0 focus:ring-1 focus:ring-line-strong rounded px-1 py-0.5 outline-none text-xs"
+											defaultValue={t.dueAt ? t.dueAt.slice(0, 10) : ""}
+											onChange={(e) => { if (e.target.value) onPatch(t.id, { dueAt: new Date(e.target.value).toISOString() }); }}
+										/>
+									) : (
+										<span className="text-xs text-muted">{t.dueAt ? new Date(t.dueAt).toLocaleDateString() : "—"}</span>
+									)}
+								</td>
+								<td className="px-2 py-1.5 text-muted whitespace-nowrap">{t.jobNumber || "—"}</td>
+								<td className="px-2 py-1.5 text-muted whitespace-nowrap">{despatchedCount}/{itemCount}</td>
+							</tr>
+						);
+					})}
+				</tbody>
+			</table>
+		</div>
+	);
+});
+
 function TasksPageInner() {
 	const currentUser = useCurrentUser();
 	const refreshCounts = useRefreshCounts();
@@ -769,6 +967,18 @@ function TasksPageInner() {
 
 	const AUTO_REFRESH_SECONDS = 120;
 	const [groupBy, setGroupBy] = useState<"none"|"customer"|"status"|"assignee">("none");
+	// Remembered per-browser, not per-account -- a lightweight display
+	// preference, not something worth a DB round trip or syncing across
+	// devices.
+	const [viewMode, setViewMode] = useState<"cards" | "sheet">("cards");
+	useEffect(() => {
+		const saved = localStorage.getItem("tasksViewMode");
+		if (saved === "cards" || saved === "sheet") setViewMode(saved);
+	}, []);
+	function changeViewMode(mode: "cards" | "sheet") {
+		setViewMode(mode);
+		localStorage.setItem("tasksViewMode", mode);
+	}
 	const [selectedIds, setSelectedIds] = useState<string[]>([]);
 	const [bulkActionBusy, setBulkActionBusy] = useState<string | null>(null); // "archive" | "delete" | "archive-completed"
 	const [anyDatePickerOpen, setAnyDatePickerOpen] = useState(false);
@@ -1266,6 +1476,25 @@ function TasksPageInner() {
 			}
 		} finally {
 			setSavingDespatchItem(false);
+		}
+	}
+
+	// Generic single-field (or few-field) task update for the sheet view's
+	// inline-editable cells. Merges the server's response into local state
+	// instead of a full reload, so editing one cell doesn't refetch and
+	// re-render the whole list.
+	async function patchTask(taskId: string, data: Record<string, any>) {
+		const res = await fetch(`/api/tasks/${taskId}`, {
+			method: "PATCH",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify(data),
+		});
+		if (res.ok) {
+			const json = await res.json();
+			setTasks(prev => prev.map(t => t.id === taskId ? { ...t, ...json.task } : t));
+		} else {
+			const json = await res.json().catch(() => ({}));
+			setError(typeof json.error === "string" ? json.error : "Couldn't update this task.");
 		}
 	}
 
@@ -2279,17 +2508,41 @@ function TasksPageInner() {
 							<input type="checkbox" checked={assignedToMeOnly} onChange={(e) => setAssignedToMeOnly(e.target.checked)} />
 							Assigned to me only
 						</label>
+						<div className="flex items-center gap-0.5 border border-line rounded-md p-0.5 mb-2">
+							<button
+								type="button"
+								className={`px-2 py-1 text-xs rounded ${viewMode === "cards" ? "bg-accent text-on-accent" : "text-muted"}`}
+								onClick={() => changeViewMode("cards")}
+							>
+								Cards
+							</button>
+							<button
+								type="button"
+								className={`px-2 py-1 text-xs rounded ${viewMode === "sheet" ? "bg-accent text-on-accent" : "text-muted"}`}
+								onClick={() => changeViewMode("sheet")}
+							>
+								Sheet
+							</button>
+						</div>
 					</div>
 					{/* Removed Select All control per request */}
 					<div className="text-sm text-gray-600">
 						{filteredTasks.length} task{filteredTasks.length !== 1 ? 's' : ''} shown
 					</div>
 				</div>
-				
+
 				{loading ? (
 					<TasksSkeleton />
 				) : filteredTasks.length === 0 ? (
 					<p className="text-center text-muted py-10">No tasks match. Create one above, or clear the filters.</p>
+				) : viewMode === "sheet" ? (
+					<TaskSheetView
+						tasks={listForRender}
+						users={users}
+						isAdmin={isAdmin}
+						onPatch={patchTask}
+						onOpenTask={(taskId) => setViewingId(taskId)}
+					/>
 				) : (
 				<ul className="space-y-2">
 						{listForRender.map((t, index) => {
